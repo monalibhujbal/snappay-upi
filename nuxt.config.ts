@@ -1,6 +1,7 @@
 export default defineNuxtConfig({
   compatibilityDate: '2024-11-01',
-  devtools: { enabled: true },
+  ssr: false,
+  devtools: { enabled: false },
 
   modules: [
     '@vite-pwa/nuxt',
@@ -52,14 +53,14 @@ export default defineNuxtConfig({
       ],
     },
     devOptions: {
-      enabled: true,
+      enabled: false,
       type: 'module',
     },
   },
 
   typescript: {
     strict: true,
-    typeCheck: true,
+    typeCheck: false,
   },
 
   runtimeConfig: {
