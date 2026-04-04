@@ -3,6 +3,8 @@ export default defineNuxtConfig({
   ssr: false,
   devtools: { enabled: false },
 
+  css: ['~/assets/css/main.css'],
+
   modules: [
     '@vite-pwa/nuxt',
     '@nuxtjs/tailwindcss',
@@ -16,6 +18,27 @@ export default defineNuxtConfig({
       'DM Mono': [400, 500],
     },
     display: 'swap',
+  },
+
+  vite: {
+    optimizeDeps: {
+      include: ['tesseract.js'],
+      exclude: ['@xenova/transformers']
+    },
+    worker: {
+      format: 'es'
+    }
+  },
+
+  nitro: {
+    routeRules: {
+      '/**': {
+        headers: {
+          'Cross-Origin-Opener-Policy': 'same-origin',
+          'Cross-Origin-Embedder-Policy': 'require-corp'
+        }
+      }
+    }
   },
 
   pwa: {
