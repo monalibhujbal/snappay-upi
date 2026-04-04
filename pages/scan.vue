@@ -173,7 +173,23 @@
           </ul>
         </div>
       </div>
-
+        <!-- Low confidence warning -->
+        <div v-if="lowConfidence"
+            class="bg-amber-500/10 border border-amber-500/25 rounded-xl
+                    px-4 py-3 mb-4 flex items-start gap-3">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+            stroke="#f59e0b" stroke-width="2" class="mt-0.5 flex-shrink-0">
+            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        <div>
+            <p class="text-amber-400 text-sm font-medium mb-0.5">Low OCR confidence</p>
+            <p class="text-amber-400/70 text-xs">
+            Image quality may be poor. Please verify extracted fields manually.
+            </p>
+        </div>
+        </div>
       <!-- Fields -->
       <div class="glass-card p-5 mb-4 space-y-4">
         <p class="text-xs font-medium text-ink-muted uppercase tracking-widest">
@@ -273,6 +289,8 @@ const extractor = useFieldExtractor()
 const nlp       = useNlpValidator()
 const txns      = useTransactions()
 const { $auth } = useNuxtApp() as any
+const lowConfidence  = ref(false)
+const ocrConfidence  = ref(0)
 
 type Step = 'capture' | 'processing' | 'review' | 'saved'
 const step             = ref<Step>('capture')
@@ -343,7 +361,16 @@ async function processImage(imageData: string) {
     step.value = 'capture'
     return
   }
+
+  // ✅ Warn if OCR confidence is low
+  if (ocrResult.confidence < 70) {
+    lowConfidence.value = true
+  } else {
+    lowConfidence.value = false
+  }
+
   ocrText.value = ocrResult.text
+  ocrConfidence.value = ocrResult.confidence  // ✅ store real confidence
   processingStep.value = 1
 
   // Step 2: Extract fields
@@ -353,9 +380,9 @@ async function processImage(imageData: string) {
   Object.assign(editableFields, fields)
   processingStep.value = 2
 
-  // Step 3: NLP validation
+  // Step 3: NLP validation (now synchronous)
   console.log('Running NLP...')
-  nlpResult.value = await nlp.classify(ocrResult.text, fields.amount ?? 0)
+  nlpResult.value = nlp.classify(ocrResult.text, fields.amount ?? 0)
   console.log('NLP result:', nlpResult.value)
   processingStep.value = 3
 
@@ -366,18 +393,22 @@ async function confirmSave() {
   const uid = $auth.currentUser?.uid
   if (!uid) return
 
-  await txns.saveTransaction({
-    userId:        uid,
-    ...editableFields,
-    direction:     nlpResult.value?.label === 'sent' ? 'sent' : 'received',
-    status:        nlpResult.value?.isSuspicious ? 'flagged' : 'verified',
-    ocrRawText:    ocrText.value,
-    ocrConfidence: 0,
-    nlpLabel:      nlpResult.value?.label ?? 'unknown',
-    nlpScore:      nlpResult.value?.score ?? 0,
-  })
-
-  step.value = 'saved'
+  try {
+    await txns.saveTransaction({
+      userId:        uid,
+      ...editableFields,
+      direction:     nlpResult.value?.label === 'sent' ? 'sent' : 'received',
+      status:        nlpResult.value?.isSuspicious ? 'flagged' : 'verified',
+      ocrRawText:    ocrText.value,
+      ocrConfidence: ocrConfidence.value,  // ✅ real value now
+      nlpLabel:      nlpResult.value?.label ?? 'unknown',
+      nlpScore:      nlpResult.value?.score ?? 0,
+    })
+    step.value = 'saved'
+  } catch (e: any) {
+    // ✅ show duplicate error on review screen
+    alert(e.message)
+  }
 }
 
 async function resetScan() {

@@ -7,7 +7,8 @@ import {
     where,
     orderBy,
     onSnapshot,
-    serverTimestamp
+    serverTimestamp,
+    getDocs
 } from 'firebase/firestore'
 import type { UpiTransaction } from '~/types/transaction'
 
@@ -18,6 +19,42 @@ export function useTransactions() {
     const error = ref<string | null>(null)
     let unsubscribe: (() => void) | null = null
 
+    async function isDuplicate(
+        transactionId: string,
+        amount: number,
+        merchantName: string,
+        transactionDate: string
+    ): Promise<boolean> {
+        const uid = $auth.currentUser?.uid
+        if (!uid) return false
+
+        // If we have a transaction ID, check by that first
+        if (transactionId) {
+            const q = query(
+                collection($db, 'transactions'),
+                where('userId', '==', uid),
+                where('transactionId', '==', transactionId)
+            )
+            const snap = await getDocs(q)
+            if (!snap.empty) return true
+        }
+
+        // Fallback: check by amount + merchant + date combination
+        if (amount && merchantName && transactionDate) {
+            const q = query(
+                collection($db, 'transactions'),
+                where('userId', '==', uid),
+                where('amount', '==', amount),
+                where('merchantName', '==', merchantName),
+                where('transactionDate', '==', transactionDate)
+            )
+            const snap = await getDocs(q)
+            if (!snap.empty) return true
+        }
+
+        return false
+    }
+
     async function saveTransaction(
         txn: Omit<UpiTransaction, 'id' | 'createdAt'>
     ): Promise<string> {
@@ -25,6 +62,16 @@ export function useTransactions() {
         error.value = null
 
         try {
+            const duplicate = await isDuplicate(
+                txn.transactionId,
+                txn.amount,
+                txn.merchantName,
+                txn.transactionDate
+            )
+            if (duplicate) {
+                throw new Error('This transaction has already been saved.')
+            }
+
             const col = collection($db, 'transactions')
             const docRef = await addDoc(col, {
                 ...txn,
@@ -60,5 +107,5 @@ export function useTransactions() {
 
     onUnmounted(() => unsubscribe?.())
 
-    return { transactions, isLoading, error, saveTransaction, startListening }
+    return { transactions, isLoading, error, saveTransaction, startListening, isDuplicate }
 }
