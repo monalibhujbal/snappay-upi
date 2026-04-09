@@ -138,6 +138,38 @@
     </div>
 
     <div v-else-if="step === 'review'" class="fade-up-2">
+      <div v-if="documentResult"
+           class="glass-card p-4 mb-4 flex items-center justify-between gap-3">
+        <div>
+          <p class="text-xs text-ink-muted uppercase tracking-widest mb-1">Detected document</p>
+          <p class="text-sm font-medium text-ink-primary">{{ documentLabel }}</p>
+          <p class="text-xs text-ink-muted mt-1">
+            Confidence {{ Math.round(documentResult.score * 100) }}%
+          </p>
+        </div>
+        <span class="text-xs font-medium px-3 py-1 rounded-full"
+              :class="documentBadgeClass">
+          {{ documentResult.kind.replaceAll('_', ' ') }}
+        </span>
+      </div>
+
+      <div v-if="showDocumentWarning"
+           class="bg-amber-500/10 border border-amber-500/25 rounded-xl
+                  px-4 py-3 mb-4 flex items-start gap-3">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+             stroke="#f59e0b" stroke-width="2" class="mt-0.5 flex-shrink-0">
+          <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        <div>
+          <p class="text-amber-400 text-sm font-medium mb-1">Check this upload</p>
+          <p class="text-amber-400/70 text-xs">
+            {{ documentWarningText }}
+          </p>
+        </div>
+      </div>
+
       <div v-if="nlpResult?.isSuspicious"
            class="bg-amber-500/10 border border-amber-500/25 rounded-xl
                   px-4 py-3 mb-4 flex items-start gap-3">
@@ -151,7 +183,7 @@
           <p class="text-amber-400 text-sm font-medium mb-1">Needs review</p>
           <ul class="space-y-0.5">
             <li v-for="r in nlpResult.reasons" :key="r"
-                class="text-amber-400/70 text-xs">â€¢ {{ r }}</li>
+                class="text-amber-400/70 text-xs">&#8226; {{ r }}</li>
           </ul>
         </div>
       </div>
@@ -179,7 +211,7 @@
         </p>
         <div class="space-y-3">
           <div>
-            <label class="text-xs text-ink-muted mb-1 block">Amount (â‚¹)</label>
+            <label class="text-xs text-ink-muted mb-1 block">Amount (₹)</label>
             <input v-model.number="editableFields.amount"
                    type="number" class="input-field" />
           </div>
@@ -252,13 +284,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted } from 'vue'
 import { useCamera } from '~/composables/useCamera'
 import { useOcr } from '~/composables/useOcr'
 import { useFieldExtractor } from '~/composables/useFieldExtractor'
 import { useNlpValidator } from '~/composables/useNlpValidator'
+import { useDocumentClassifier } from '~/composables/useDocumentClassifier'
 import { useTransactions } from '~/composables/useTransactions'
 import type { NlpResult } from '~/composables/useNlpValidator'
+import type { DocumentClassificationResult } from '~/composables/useDocumentClassifier'
 
 definePageMeta({ middleware: ['auth'] })
 
@@ -266,6 +300,7 @@ const camera = useCamera()
 const ocr = useOcr()
 const extractor = useFieldExtractor()
 const nlp = useNlpValidator()
+const documentClassifier = useDocumentClassifier()
 const txns = useTransactions()
 const { $auth } = useNuxtApp() as any
 const lowConfidence = ref(false)
@@ -277,11 +312,13 @@ const processingStep = ref(0)
 const videoRef = ref<HTMLVideoElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const nlpResult = ref<NlpResult | null>(null)
+const documentResult = ref<DocumentClassificationResult | null>(null)
 const ocrText = ref('')
 const capturedImageData = ref<string | null>(null)
 
 const processingSteps = [
   { label: 'Running OCR...' },
+  { label: 'Classifying document...' },
   { label: 'Extracting fields...' },
   { label: 'AI validation...' },
 ]
@@ -292,6 +329,61 @@ const editableFields = reactive({
   amount: 0,
   merchantName: '',
   transactionDate: '',
+})
+
+const documentLabelMap: Record<string, string> = {
+  upi_receipt_success: 'UPI receipt (success)',
+  upi_receipt_failed: 'UPI receipt (failed)',
+  upi_receipt_pending: 'UPI receipt (pending)',
+  bank_statement: 'Bank statement',
+  voucher: 'Voucher / invoice',
+  unknown: 'Unknown document',
+}
+
+const documentLabel = computed(() =>
+  documentResult.value ? documentLabelMap[documentResult.value.kind] ?? 'Unknown document' : 'Unknown document'
+)
+
+const documentBadgeClass = computed(() => {
+  switch (documentResult.value?.kind) {
+    case 'upi_receipt_success':
+      return 'bg-brand-500/15 text-brand-400'
+    case 'upi_receipt_failed':
+      return 'bg-red-500/15 text-red-400'
+    case 'upi_receipt_pending':
+      return 'bg-amber-500/15 text-amber-400'
+    case 'bank_statement':
+      return 'bg-sky-500/15 text-sky-400'
+    case 'voucher':
+      return 'bg-violet-500/15 text-violet-400'
+    default:
+      return 'bg-slate-700/60 text-ink-muted'
+  }
+})
+
+const showDocumentWarning = computed(() =>
+  documentResult.value?.kind === 'unknown'
+  || documentResult.value?.kind === 'bank_statement'
+  || documentResult.value?.kind === 'voucher'
+  || documentResult.value?.kind === 'upi_receipt_failed'
+  || documentResult.value?.kind === 'upi_receipt_pending'
+)
+
+const documentWarningText = computed(() => {
+  switch (documentResult.value?.kind) {
+    case 'unknown':
+      return 'This does not look clearly like a UPI receipt yet, so please double-check the extracted fields.'
+    case 'bank_statement':
+      return 'This looks more like a bank statement than a receipt. We will support statement parsing next, but this scan flow is still tuned for receipts.'
+    case 'voucher':
+      return 'This looks more like an invoice or voucher than a payment receipt.'
+    case 'upi_receipt_failed':
+      return 'The text suggests this transaction failed, so it should not be treated as a verified payment.'
+    case 'upi_receipt_pending':
+      return 'The text suggests this transaction is still pending.'
+    default:
+      return ''
+  }
 })
 
 onMounted(async () => {
@@ -350,18 +442,36 @@ async function processImage(imageData: string) {
   ocrConfidence.value = ocrResult.confidence
   processingStep.value = 1
 
+  documentResult.value = documentClassifier.classify(ocrResult.text)
+  processingStep.value = 2
+
   console.log('Extracting fields from:', ocrResult.text)
   const fields = extractor.extract(ocrResult.text)
   console.log('Extracted fields:', fields)
   Object.assign(editableFields, fields)
-  processingStep.value = 2
+  processingStep.value = 3
 
   console.log('Running NLP...')
   nlpResult.value = nlp.classify(ocrResult.text, fields.amount ?? 0)
   console.log('NLP result:', nlpResult.value)
-  processingStep.value = 3
+  processingStep.value = 4
 
   step.value = 'review'
+}
+
+function resolveStatus() {
+  switch (documentResult.value?.kind) {
+    case 'upi_receipt_failed':
+      return 'failed'
+    case 'upi_receipt_pending':
+      return 'pending'
+    case 'unknown':
+    case 'bank_statement':
+    case 'voucher':
+      return 'flagged'
+    default:
+      return nlpResult.value?.isSuspicious ? 'flagged' : 'verified'
+  }
 }
 
 async function confirmSave() {
@@ -373,7 +483,7 @@ async function confirmSave() {
       userId: uid,
       ...editableFields,
       direction: nlpResult.value?.label === 'sent' ? 'sent' : 'received',
-      status: nlpResult.value?.isSuspicious ? 'flagged' : 'verified',
+      status: resolveStatus(),
       ocrRawText: ocrText.value,
       ocrConfidence: ocrConfidence.value,
       nlpLabel: nlpResult.value?.label ?? 'unknown',
@@ -391,6 +501,7 @@ async function resetScan() {
   step.value = 'capture'
   processingStep.value = 0
   nlpResult.value = null
+  documentResult.value = null
   ocrText.value = ''
 
   Object.assign(editableFields, {

@@ -4,6 +4,14 @@ export type TransactionStatus =
     | 'failed'
     | 'flagged'
 
+export type DocumentKind =
+    | 'upi_receipt_success'
+    | 'upi_receipt_failed'
+    | 'upi_receipt_pending'
+    | 'bank_statement'
+    | 'voucher'
+    | 'unknown'
+
 export interface UpiTransaction {
     id?: string
     userId: string
