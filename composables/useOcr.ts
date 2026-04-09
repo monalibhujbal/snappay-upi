@@ -1,4 +1,3 @@
-// composables/useOcr.ts
 import { ref } from 'vue'
 import type { OcrResult } from '~/types/transaction'
 
@@ -12,7 +11,7 @@ async function getWorker(): Promise<any> {
     if (initPromise) return initPromise
 
     initPromise = (async () => {
-        // v7 requires dynamic import to work with Vite
+        // Tesseract v7 plays nicer with Vite when we load it this way.
         const { createWorker } = await import('tesseract.js')
 
         const w = await createWorker('eng', 1, {

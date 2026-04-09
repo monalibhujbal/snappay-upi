@@ -1,4 +1,3 @@
-// composables/useNlpValidator.ts
 import { ref } from 'vue'
 
 export interface NlpResult {
@@ -19,7 +18,6 @@ export function useNlpValidator() {
         try {
             const lower = text.toLowerCase()
 
-            // Direction detection — keyword matching
             const sentKeywords = [
                 'paid to', 'sent to', 'debit', 'debited',
                 'payment to', 'transferred to', 'you paid',
@@ -44,7 +42,7 @@ export function useNlpValidator() {
                 label = 'received'
                 score = Math.min(0.95, 0.6 + receivedScore * 0.1)
             } else if (sentScore === receivedScore && sentScore > 0) {
-                // tie — default to sent for UPI receipts
+                // Most scans here are outgoing payments, so this is a safer fallback.
                 label = 'sent'
                 score = 0.55
             } else {
@@ -52,10 +50,9 @@ export function useNlpValidator() {
                 score = 0
             }
 
-            // Fraud / suspicious checks
             const reasons: string[] = []
             if (amount > 50000)
-                reasons.push('Large transaction (>₹50,000)')
+                reasons.push('Large transaction (>â‚¹50,000)')
             if (lower.includes('pending'))
                 reasons.push('Status shows pending')
             if (lower.includes('failed') || lower.includes('failure'))

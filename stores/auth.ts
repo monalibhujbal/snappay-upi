@@ -42,7 +42,6 @@ export const useAuthStore = defineStore('auth', {
 
     async signOut() {
       const { $auth } = useNuxtApp() as any
-      // ✅ use imported signOut function, not $auth.signOut()
       await firebaseSignOut($auth)
       this.user = null
       navigateTo('/auth')

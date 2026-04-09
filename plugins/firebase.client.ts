@@ -27,17 +27,13 @@ export default defineNuxtPlugin(async () => {
 
   const db = getFirestore(app)
   const auth = getAuth(app)
-
-  // ✅ Bootstrap auth state ONCE on app load
-  // This resolves before any page renders, preventing the
-  // "loading flicker" and auth guard race conditions
   const authStore = useAuthStore()
 
   await new Promise<void>((resolve) => {
     const unsub = onAuthStateChanged(auth, (user) => {
       authStore.setUser(user)
-      unsub()       // unsubscribe after first emission
-      resolve()     // unblock page render
+      unsub()
+      resolve()
     })
   })
 
@@ -50,7 +46,7 @@ export default defineNuxtPlugin(async () => {
       signInWithPopup: (auth: any, provider: any) => signInWithPopup(auth, provider),
       signInWithPhoneNumber: (auth: any, phone: any, recaptcha: any) => signInWithPhoneNumber(auth, phone, recaptcha),
       RecaptchaVerifier,
-      // ✅ wrapped as a real callable — fixes "$onAuthStateChanged is not a function"
+      // Keeping this wrapped makes the plugin API easier to use in components.
       onAuthStateChanged: (auth: any, cb: any) => onAuthStateChanged(auth, cb),
     },
   }

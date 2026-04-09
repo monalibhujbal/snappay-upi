@@ -7,7 +7,6 @@
       ? 'text-brand-500'
       : 'text-slate-500 hover:text-slate-300'"
   >
-    <!-- Scan icon -->
     <svg v-if="item.icon === 'scan'"
       class="w-6 h-6" fill="none" stroke="currentColor"
       stroke-width="1.5" viewBox="0 0 24 24">
@@ -17,7 +16,6 @@
            M9 12h6m-3-3v6"/>
     </svg>
 
-    <!-- Ledger icon -->
     <svg v-else-if="item.icon === 'ledger'"
       class="w-6 h-6" fill="none" stroke="currentColor"
       stroke-width="1.5" viewBox="0 0 24 24">
@@ -27,7 +25,6 @@
            5.414A1 1 0 0120 9.414V19a2 2 0 01-2 2z"/>
     </svg>
 
-    <!-- Profile icon -->
     <svg v-else-if="item.icon === 'profile'"
       class="w-6 h-6" fill="none" stroke="currentColor"
       stroke-width="1.5" viewBox="0 0 24 24">

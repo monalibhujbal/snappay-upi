@@ -1,4 +1,3 @@
-// composables/useTransactions.ts
 import { ref, onUnmounted } from 'vue'
 import {
     collection,
@@ -28,7 +27,6 @@ export function useTransactions() {
         const uid = $auth.currentUser?.uid
         if (!uid) return false
 
-        // If we have a transaction ID, check by that first
         if (transactionId) {
             const q = query(
                 collection($db, 'transactions'),
@@ -39,7 +37,6 @@ export function useTransactions() {
             if (!snap.empty) return true
         }
 
-        // Fallback: check by amount + merchant + date combination
         if (amount && merchantName && transactionDate) {
             const q = query(
                 collection($db, 'transactions'),

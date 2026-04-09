@@ -1,11 +1,9 @@
 <template>
   <div class="min-h-screen bg-surface-base bg-grid-pattern px-5 pt-14 pb-28 relative overflow-hidden">
 
-    <!-- Background orb -->
     <div class="orb-1 absolute top-[-100px] right-[-60px] w-[300px] h-[300px]
                 rounded-full bg-brand-500/6 blur-3xl pointer-events-none" />
 
-    <!-- Header -->
     <div class="fade-up-1 flex items-center justify-between mb-8">
       <div>
         <p class="text-ink-muted text-xs font-medium uppercase tracking-widest mb-0.5">
@@ -23,7 +21,6 @@
       </div>
     </div>
 
-    <!-- Balance card -->
     <div class="fade-up-2 glass-card p-5 mb-6 relative overflow-hidden">
       <div class="absolute top-0 right-0 w-32 h-32 rounded-full
                   bg-brand-500/5 blur-2xl pointer-events-none" />
@@ -51,7 +48,6 @@
       </div>
     </div>
 
-    <!-- Recent transactions -->
     <div class="fade-up-3 mb-6">
       <div class="flex items-center justify-between mb-3">
         <p class="text-xs font-medium text-ink-muted uppercase tracking-widest">
@@ -63,7 +59,6 @@
         </NuxtLink>
       </div>
 
-      <!-- Loading -->
       <div v-if="txns.isLoading.value"
            class="glass-card p-8 flex items-center justify-center">
         <svg class="animate-spin w-6 h-6 text-ink-muted" viewBox="0 0 24 24" fill="none">
@@ -72,7 +67,6 @@
         </svg>
       </div>
 
-      <!-- Empty state -->
       <div v-else-if="txns.transactions.value.length === 0"
            class="glass-card p-8 flex flex-col items-center text-center">
         <div class="w-12 h-12 rounded-2xl bg-surface-input flex items-center
@@ -87,7 +81,6 @@
         <p class="text-ink-muted text-xs">Scan a receipt to get started</p>
       </div>
 
-      <!-- Transaction list -->
       <div v-else class="space-y-2">
         <div
           v-for="txn in recentTransactions"
@@ -130,7 +123,6 @@
       </div>
     </div>
 
-    <!-- Scan button -->
     <div class="fade-up-3 glass-card p-6 flex flex-col items-center">
       <div class="relative w-52 h-52 mb-6 flex items-center justify-center">
         <div class="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2

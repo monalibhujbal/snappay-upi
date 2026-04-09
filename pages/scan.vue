@@ -1,12 +1,8 @@
-<!-- pages/scan.vue -->
 <template>
   <div class="min-h-screen bg-surface-base px-5 pt-14 pb-28 relative overflow-hidden">
-
-    <!-- Background orb -->
     <div class="orb-1 absolute top-[-100px] right-[-60px] w-[300px] h-[300px]
                 rounded-full bg-brand-500/6 blur-3xl pointer-events-none" />
 
-    <!-- Header -->
     <div class="fade-up-1 flex items-center gap-4 mb-8">
       <NuxtLink to="/"
         class="w-9 h-9 rounded-xl bg-surface-card border border-slate-700/60
@@ -20,11 +16,8 @@
       <h1 class="text-lg font-semibold text-ink-primary">Scan Receipt</h1>
     </div>
 
-    <!-- STEP: capture -->
     <div v-if="step === 'capture'" class="fade-up-2">
       <div class="glass-card overflow-hidden mb-4 relative min-h-[240px]">
-
-        <!-- Camera preview -->
         <video
           ref="videoRef"
           autoplay
@@ -33,7 +26,6 @@
           :class="{ 'opacity-0': !camera.isActive.value }"
         />
 
-        <!-- Scanner overlay -->
         <div v-if="camera.isActive.value"
              class="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div class="relative w-64 h-40">
@@ -44,7 +36,6 @@
           </div>
         </div>
 
-        <!-- Camera loading -->
         <div v-if="!camera.isActive.value && !camera.error.value"
              class="absolute inset-0 flex items-center justify-center bg-surface-input">
           <div class="flex flex-col items-center gap-3 text-ink-muted">
@@ -56,7 +47,6 @@
           </div>
         </div>
 
-        <!-- Camera error -->
         <div v-if="camera.error.value"
              class="absolute inset-0 flex items-center justify-center bg-surface-input px-6">
           <div class="text-center">
@@ -69,10 +59,7 @@
         </div>
       </div>
 
-      <!-- Controls -->
       <div class="flex items-center justify-center gap-6 mt-4">
-
-        <!-- Gallery button -->
         <label class="btn-ghost flex items-center gap-2 cursor-pointer">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
                stroke="currentColor" stroke-width="2">
@@ -90,7 +77,6 @@
           />
         </label>
 
-        <!-- Shutter button -->
         <button
           class="w-16 h-16 rounded-full bg-brand-500 shadow-glow-teal
                  flex items-center justify-center transition-all
@@ -108,7 +94,6 @@
       </div>
     </div>
 
-    <!-- STEP: processing -->
     <div v-else-if="step === 'processing'" class="fade-up-2">
       <div class="glass-card p-6 mb-4">
         <img
@@ -152,10 +137,7 @@
       </div>
     </div>
 
-    <!-- STEP: review -->
     <div v-else-if="step === 'review'" class="fade-up-2">
-
-      <!-- Fraud alert -->
       <div v-if="nlpResult?.isSuspicious"
            class="bg-amber-500/10 border border-amber-500/25 rounded-xl
                   px-4 py-3 mb-4 flex items-start gap-3">
@@ -169,35 +151,35 @@
           <p class="text-amber-400 text-sm font-medium mb-1">Needs review</p>
           <ul class="space-y-0.5">
             <li v-for="r in nlpResult.reasons" :key="r"
-                class="text-amber-400/70 text-xs">• {{ r }}</li>
+                class="text-amber-400/70 text-xs">â€¢ {{ r }}</li>
           </ul>
         </div>
       </div>
-        <!-- Low confidence warning -->
-        <div v-if="lowConfidence"
-            class="bg-amber-500/10 border border-amber-500/25 rounded-xl
-                    px-4 py-3 mb-4 flex items-start gap-3">
+
+      <div v-if="lowConfidence"
+           class="bg-amber-500/10 border border-amber-500/25 rounded-xl
+                  px-4 py-3 mb-4 flex items-start gap-3">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
             stroke="#f59e0b" stroke-width="2" class="mt-0.5 flex-shrink-0">
-            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-            <line x1="12" y1="9" x2="12" y2="13"/>
-            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
         </svg>
         <div>
-            <p class="text-amber-400 text-sm font-medium mb-0.5">Low OCR confidence</p>
-            <p class="text-amber-400/70 text-xs">
+          <p class="text-amber-400 text-sm font-medium mb-0.5">Low OCR confidence</p>
+          <p class="text-amber-400/70 text-xs">
             Image quality may be poor. Please verify extracted fields manually.
-            </p>
+          </p>
         </div>
-        </div>
-      <!-- Fields -->
+      </div>
+
       <div class="glass-card p-5 mb-4 space-y-4">
         <p class="text-xs font-medium text-ink-muted uppercase tracking-widest">
           Extracted details
         </p>
         <div class="space-y-3">
           <div>
-            <label class="text-xs text-ink-muted mb-1 block">Amount (₹)</label>
+            <label class="text-xs text-ink-muted mb-1 block">Amount (â‚¹)</label>
             <input v-model.number="editableFields.amount"
                    type="number" class="input-field" />
           </div>
@@ -229,7 +211,6 @@
         </div>
       </div>
 
-      <!-- Actions -->
       <div class="flex gap-3">
         <button class="btn-ghost flex-1" @click="resetScan">
           Rescan
@@ -244,7 +225,6 @@
       </div>
     </div>
 
-    <!-- STEP: saved -->
     <div v-else-if="step === 'saved'"
          class="fade-up-2 flex flex-col items-center justify-center
                 min-h-[60vh] text-center">
@@ -268,7 +248,6 @@
         </button>
       </div>
     </div>
-
   </div>
 </template>
 
@@ -283,23 +262,23 @@ import type { NlpResult } from '~/composables/useNlpValidator'
 
 definePageMeta({ middleware: ['auth'] })
 
-const camera    = useCamera()
-const ocr       = useOcr()
+const camera = useCamera()
+const ocr = useOcr()
 const extractor = useFieldExtractor()
-const nlp       = useNlpValidator()
-const txns      = useTransactions()
+const nlp = useNlpValidator()
+const txns = useTransactions()
 const { $auth } = useNuxtApp() as any
-const lowConfidence  = ref(false)
-const ocrConfidence  = ref(0)
+const lowConfidence = ref(false)
+const ocrConfidence = ref(0)
 
 type Step = 'capture' | 'processing' | 'review' | 'saved'
-const step             = ref<Step>('capture')
-const processingStep   = ref(0)
-const videoRef         = ref<HTMLVideoElement | null>(null)
-const fileInputRef     = ref<HTMLInputElement | null>(null)
-const nlpResult        = ref<NlpResult | null>(null)
-const ocrText          = ref('')
-const capturedImageData = ref<string | null>(null)  // ← stores image for preview
+const step = ref<Step>('capture')
+const processingStep = ref(0)
+const videoRef = ref<HTMLVideoElement | null>(null)
+const fileInputRef = ref<HTMLInputElement | null>(null)
+const nlpResult = ref<NlpResult | null>(null)
+const ocrText = ref('')
+const capturedImageData = ref<string | null>(null)
 
 const processingSteps = [
   { label: 'Running OCR...' },
@@ -308,10 +287,10 @@ const processingSteps = [
 ]
 
 const editableFields = reactive({
-  transactionId:   '',
-  upiId:           '',
-  amount:          0,
-  merchantName:    '',
+  transactionId: '',
+  upiId: '',
+  amount: 0,
+  merchantName: '',
   transactionDate: '',
 })
 
@@ -332,17 +311,21 @@ async function handleFileUpload(e: Event) {
     console.log('No file selected')
     return
   }
+
   console.log('File selected:', file.name, file.size)
   const reader = new FileReader()
+
   reader.onload = async (ev) => {
     const result = ev.target?.result as string
     console.log('File read complete, starting processImage')
     capturedImageData.value = result
     await processImage(result)
   }
+
   reader.onerror = (err) => {
     console.error('FileReader error:', err)
   }
+
   reader.readAsDataURL(file)
 }
 
@@ -352,35 +335,27 @@ async function processImage(imageData: string) {
   processingStep.value = 0
   camera.stopCamera()
 
-  // Step 1: OCR
   console.log('Starting OCR...')
   const ocrResult = await ocr.recognize(imageData)
   console.log('OCR result:', ocrResult)
+
   if (!ocrResult) {
     console.error('OCR failed, going back to capture')
     step.value = 'capture'
     return
   }
 
-  // ✅ Warn if OCR confidence is low
-  if (ocrResult.confidence < 70) {
-    lowConfidence.value = true
-  } else {
-    lowConfidence.value = false
-  }
-
+  lowConfidence.value = ocrResult.confidence < 70
   ocrText.value = ocrResult.text
-  ocrConfidence.value = ocrResult.confidence  // ✅ store real confidence
+  ocrConfidence.value = ocrResult.confidence
   processingStep.value = 1
 
-  // Step 2: Extract fields
   console.log('Extracting fields from:', ocrResult.text)
   const fields = extractor.extract(ocrResult.text)
   console.log('Extracted fields:', fields)
   Object.assign(editableFields, fields)
   processingStep.value = 2
 
-  // Step 3: NLP validation (now synchronous)
   console.log('Running NLP...')
   nlpResult.value = nlp.classify(ocrResult.text, fields.amount ?? 0)
   console.log('NLP result:', nlpResult.value)
@@ -395,18 +370,17 @@ async function confirmSave() {
 
   try {
     await txns.saveTransaction({
-      userId:        uid,
+      userId: uid,
       ...editableFields,
-      direction:     nlpResult.value?.label === 'sent' ? 'sent' : 'received',
-      status:        nlpResult.value?.isSuspicious ? 'flagged' : 'verified',
-      ocrRawText:    ocrText.value,
-      ocrConfidence: ocrConfidence.value,  // ✅ real value now
-      nlpLabel:      nlpResult.value?.label ?? 'unknown',
-      nlpScore:      nlpResult.value?.score ?? 0,
+      direction: nlpResult.value?.label === 'sent' ? 'sent' : 'received',
+      status: nlpResult.value?.isSuspicious ? 'flagged' : 'verified',
+      ocrRawText: ocrText.value,
+      ocrConfidence: ocrConfidence.value,
+      nlpLabel: nlpResult.value?.label ?? 'unknown',
+      nlpScore: nlpResult.value?.score ?? 0,
     })
     step.value = 'saved'
   } catch (e: any) {
-    // ✅ show duplicate error on review screen
     alert(e.message)
   }
 }
@@ -418,10 +392,15 @@ async function resetScan() {
   processingStep.value = 0
   nlpResult.value = null
   ocrText.value = ''
+
   Object.assign(editableFields, {
-    transactionId: '', upiId: '', amount: 0,
-    merchantName: '', transactionDate: ''
+    transactionId: '',
+    upiId: '',
+    amount: 0,
+    merchantName: '',
+    transactionDate: '',
   })
+
   if (videoRef.value) await camera.startCamera(videoRef.value)
 }
 </script>

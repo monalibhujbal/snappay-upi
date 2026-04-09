@@ -1,5 +1,3 @@
-// types/transaction.ts
-
 export type TransactionStatus =
     | 'pending'
     | 'verified'

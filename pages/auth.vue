@@ -2,7 +2,6 @@
   <div class="min-h-screen bg-surface-base bg-grid-pattern
               flex items-center justify-center px-5 overflow-hidden relative">
 
-    <!-- Background orbs -->
     <div class="orb-1 absolute top-[-120px] right-[-80px] w-[380px] h-[380px]
                 rounded-full bg-brand-500/8 blur-3xl pointer-events-none" />
     <div class="orb-2 absolute bottom-[-80px] left-[-60px] w-[280px] h-[280px]
@@ -10,7 +9,6 @@
 
     <div class="w-full max-w-[360px] relative z-10">
 
-      <!-- Logo -->
       <div class="fade-up-1 text-center mb-10">
         <div class="inline-flex items-center justify-center w-16 h-16
                     rounded-2xl bg-brand-500/10 border border-brand-500/20
@@ -29,10 +27,8 @@
         </p>
       </div>
 
-      <!-- Card -->
       <div class="fade-up-2 glass-card p-6">
 
-        <!-- Phone step -->
         <div v-if="!otpSent">
           <p class="text-xs font-medium text-ink-muted uppercase tracking-widest mb-4">
             Sign in
@@ -89,7 +85,6 @@
           </button>
         </div>
 
-        <!-- OTP step -->
         <div v-else>
           <button class="flex items-center gap-2 text-ink-muted text-xs mb-5
                          hover:text-ink-primary transition-colors"
@@ -135,7 +130,6 @@
           </button>
         </div>
 
-        <!-- Error -->
         <div v-if="authStore.error"
              class="mt-4 flex items-start gap-2 bg-red-500/10 border
                     border-red-500/20 rounded-xl px-4 py-3">
@@ -148,7 +142,6 @@
         </div>
       </div>
 
-      <!-- Footer -->
       <p class="fade-up-3 text-center text-ink-muted text-xs mt-6">
         Protected by Firebase Auth · End-to-end encrypted
       </p>

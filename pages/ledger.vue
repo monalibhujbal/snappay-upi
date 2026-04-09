@@ -1,11 +1,9 @@
 <template>
   <div class="min-h-screen bg-surface-base px-5 pt-14 pb-28 relative overflow-hidden">
 
-    <!-- Background orb -->
     <div class="orb-1 absolute top-[-100px] right-[-60px] w-[300px] h-[300px]
                 rounded-full bg-brand-500/6 blur-3xl pointer-events-none" />
 
-    <!-- Header -->
     <div class="fade-up-1 flex items-center justify-between mb-6">
       <div>
         <p class="text-ink-muted text-xs font-medium uppercase tracking-widest mb-0.5">
@@ -19,7 +17,6 @@
       </div>
     </div>
 
-    <!-- Filter tabs -->
     <div class="fade-up-2 flex gap-2 mb-5 overflow-x-auto pb-1">
       <button
         v-for="f in filters"
@@ -35,7 +32,6 @@
       </button>
     </div>
 
-    <!-- Loading -->
     <div v-if="txns.isLoading.value"
          class="flex items-center justify-center py-20">
       <svg class="animate-spin w-6 h-6 text-ink-muted" viewBox="0 0 24 24" fill="none">
@@ -44,7 +40,6 @@
       </svg>
     </div>
 
-    <!-- Empty state -->
     <div v-else-if="filteredTransactions.length === 0"
          class="fade-up-3 flex flex-col items-center justify-center py-20 text-center">
       <div class="w-14 h-14 rounded-2xl bg-surface-input flex items-center
@@ -59,7 +54,6 @@
       <p class="text-ink-muted text-xs">Try a different filter</p>
     </div>
 
-    <!-- Transaction list -->
     <div v-else class="fade-up-3 space-y-2">
       <div
         v-for="txn in filteredTransactions"
@@ -93,7 +87,6 @@
           </div>
         </div>
 
-        <!-- Details row -->
         <div class="mt-3 pt-3 border-t border-slate-700/40 flex items-center
                     justify-between flex-wrap gap-2">
           <div class="flex items-center gap-2">

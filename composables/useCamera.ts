@@ -1,4 +1,3 @@
-// composables/useCamera.ts
 import { ref, onUnmounted } from 'vue'
 
 export function useCamera() {
@@ -38,7 +37,7 @@ export function useCamera() {
         const ctx = canvas.getContext('2d')!
         ctx.drawImage(videoEl.value, 0, 0)
 
-        // Grayscale + contrast boost for better OCR accuracy
+        // This quick pass makes text a little easier for OCR to read.
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
         const data = imageData.data
         for (let i = 0; i < data.length; i += 4) {

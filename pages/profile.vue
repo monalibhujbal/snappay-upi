@@ -1,11 +1,9 @@
 <template>
   <div class="min-h-screen bg-surface-base px-5 pt-14 pb-28 relative overflow-hidden">
 
-    <!-- Background orb -->
     <div class="orb-1 absolute top-[-100px] right-[-60px] w-[300px] h-[300px]
                 rounded-full bg-brand-500/6 blur-3xl pointer-events-none" />
 
-    <!-- Header -->
     <div class="fade-up-1 mb-8">
       <p class="text-ink-muted text-xs font-medium uppercase tracking-widest mb-0.5">
         Account
@@ -13,7 +11,6 @@
       <h1 class="text-xl font-semibold text-ink-primary">Profile</h1>
     </div>
 
-    <!-- User card -->
     <div class="fade-up-2 glass-card p-5 mb-4">
       <div class="flex items-center gap-4">
         <div class="w-14 h-14 rounded-2xl bg-brand-500/15 border border-brand-500/25
@@ -33,7 +30,6 @@
       </div>
     </div>
 
-    <!-- Stats -->
     <div class="fade-up-2 grid grid-cols-3 gap-3 mb-6">
       <div class="glass-card p-4 text-center">
         <p class="text-2xl font-semibold text-ink-primary font-mono">
@@ -55,7 +51,6 @@
       </div>
     </div>
 
-    <!-- Export section -->
     <div class="fade-up-3 glass-card p-5 mb-4">
       <p class="text-xs font-medium text-ink-muted uppercase tracking-widest mb-4">
         Export data
@@ -112,7 +107,6 @@
       </div>
     </div>
 
-    <!-- Sign out -->
     <div class="fade-up-3 glass-card p-5">
       <p class="text-xs font-medium text-ink-muted uppercase tracking-widest mb-4">
         Account
