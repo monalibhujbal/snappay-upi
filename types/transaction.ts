@@ -12,6 +12,13 @@ export type DocumentKind =
     | 'voucher'
     | 'unknown'
 
+export type ProviderKind =
+    | 'gpay'
+    | 'phonepe'
+    | 'paytm'
+    | 'generic_upi'
+    | 'unknown_provider'
+
 export interface UpiTransaction {
     id?: string
     userId: string
@@ -43,4 +50,15 @@ export interface ExtractedFields {
     amount: number
     merchantName: string
     transactionDate: string
+}
+
+export interface SemanticExtractionResult {
+    amount: number | null
+    currency: string | null
+    receiver: string | null
+    sender: string | null
+    transaction_id: string | null
+    date: string | null
+    status: string | null
+    provider: string | null
 }

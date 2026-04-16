@@ -20,6 +20,10 @@ const DOCUMENT_KEYWORDS: Record<DocumentKind, string[]> = {
         'debited',
         'upi transaction',
         'completed',
+        'google pay',
+        'g pay',
+        'phonepe',
+        'paytm',
     ],
     upi_receipt_failed: [
         'payment failed',

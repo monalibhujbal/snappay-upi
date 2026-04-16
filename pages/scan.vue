@@ -153,6 +153,21 @@
         </span>
       </div>
 
+      <div v-if="providerResult"
+           class="glass-card p-4 mb-4 flex items-center justify-between gap-3">
+        <div>
+          <p class="text-xs text-ink-muted uppercase tracking-widest mb-1">Detected provider</p>
+          <p class="text-sm font-medium text-ink-primary">{{ providerLabel }}</p>
+          <p class="text-xs text-ink-muted mt-1">
+            Confidence {{ Math.round(providerResult.score * 100) }}%
+          </p>
+        </div>
+        <span class="text-xs font-medium px-3 py-1 rounded-full"
+              :class="providerBadgeClass">
+          {{ providerResult.kind.replaceAll('_', ' ') }}
+        </span>
+      </div>
+
       <div v-if="showDocumentWarning"
            class="bg-amber-500/10 border border-amber-500/25 rounded-xl
                   px-4 py-3 mb-4 flex items-start gap-3">
@@ -243,13 +258,30 @@
         </div>
       </div>
 
+      <div v-if="isDuplicateReceipt"
+           class="bg-red-500/10 border border-red-500/25 rounded-xl
+                  px-4 py-3 mb-4 flex items-start gap-3">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+             stroke="#f87171" stroke-width="2" class="mt-0.5 flex-shrink-0">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <div>
+          <p class="text-red-400 text-sm font-medium mb-1">Already Scanned</p>
+          <p class="text-red-400/70 text-xs">
+            This receipt matches one already in your ledger.
+          </p>
+        </div>
+      </div>
+
       <div class="flex gap-3">
         <button class="btn-ghost flex-1" @click="resetScan">
           Rescan
         </button>
         <button
           class="btn-primary flex-1"
-          :disabled="txns.isLoading.value"
+          :disabled="txns.isLoading.value || isDuplicateReceipt"
           @click="confirmSave"
         >
           {{ txns.isLoading.value ? 'Saving...' : 'Confirm & Save' }}
@@ -284,15 +316,20 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted, watch } from 'vue'
 import { useCamera } from '~/composables/useCamera'
 import { useOcr } from '~/composables/useOcr'
 import { useFieldExtractor } from '~/composables/useFieldExtractor'
 import { useNlpValidator } from '~/composables/useNlpValidator'
 import { useDocumentClassifier } from '~/composables/useDocumentClassifier'
+import { useProviderClassifier } from '~/composables/useProviderClassifier'
+import { useSemanticExtractor } from '~/composables/useSemanticExtractor'
 import { useTransactions } from '~/composables/useTransactions'
 import type { NlpResult } from '~/composables/useNlpValidator'
 import type { DocumentClassificationResult } from '~/composables/useDocumentClassifier'
+import type { ProviderClassificationResult } from '~/composables/useProviderClassifier'
+import type { SemanticExtractionResult } from '~/types/transaction'
+import { useUIStore } from '~/stores/ui'
 
 definePageMeta({ middleware: ['auth'] })
 
@@ -301,8 +338,12 @@ const ocr = useOcr()
 const extractor = useFieldExtractor()
 const nlp = useNlpValidator()
 const documentClassifier = useDocumentClassifier()
+const providerClassifier = useProviderClassifier()
+const semanticExtractor = useSemanticExtractor()
 const txns = useTransactions()
 const { $auth } = useNuxtApp() as any
+const uiStore = useUIStore()
+
 const lowConfidence = ref(false)
 const ocrConfidence = ref(0)
 
@@ -313,13 +354,18 @@ const videoRef = ref<HTMLVideoElement | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const nlpResult = ref<NlpResult | null>(null)
 const documentResult = ref<DocumentClassificationResult | null>(null)
+const providerResult = ref<ProviderClassificationResult | null>(null)
+const semanticResult = ref<SemanticExtractionResult | null>(null)
 const ocrText = ref('')
 const capturedImageData = ref<string | null>(null)
+const isDuplicateReceipt = ref(false)
 
 const processingSteps = [
   { label: 'Running OCR...' },
   { label: 'Classifying document...' },
+  { label: 'Detecting provider...' },
   { label: 'Extracting fields...' },
+  { label: 'AI semantic parsing (Transformers)...' },
   { label: 'AI validation...' },
 ]
 
@@ -331,6 +377,19 @@ const editableFields = reactive({
   transactionDate: '',
 })
 
+watch(
+  editableFields,
+  async (newFields) => {
+    isDuplicateReceipt.value = await txns.isDuplicate(
+      newFields.transactionId,
+      newFields.amount,
+      newFields.merchantName,
+      newFields.transactionDate
+    )
+  },
+  { deep: true }
+)
+
 const documentLabelMap: Record<string, string> = {
   upi_receipt_success: 'UPI receipt (success)',
   upi_receipt_failed: 'UPI receipt (failed)',
@@ -340,8 +399,20 @@ const documentLabelMap: Record<string, string> = {
   unknown: 'Unknown document',
 }
 
+const providerLabelMap: Record<string, string> = {
+  gpay: 'Google Pay',
+  phonepe: 'PhonePe',
+  paytm: 'Paytm',
+  generic_upi: 'Generic UPI receipt',
+  unknown_provider: 'Unknown provider',
+}
+
 const documentLabel = computed(() =>
   documentResult.value ? documentLabelMap[documentResult.value.kind] ?? 'Unknown document' : 'Unknown document'
+)
+
+const providerLabel = computed(() =>
+  providerResult.value ? providerLabelMap[providerResult.value.kind] ?? 'Unknown provider' : 'Unknown provider'
 )
 
 const documentBadgeClass = computed(() => {
@@ -356,6 +427,21 @@ const documentBadgeClass = computed(() => {
       return 'bg-sky-500/15 text-sky-400'
     case 'voucher':
       return 'bg-violet-500/15 text-violet-400'
+    default:
+      return 'bg-slate-700/60 text-ink-muted'
+  }
+})
+
+const providerBadgeClass = computed(() => {
+  switch (providerResult.value?.kind) {
+    case 'gpay':
+      return 'bg-blue-500/15 text-blue-400'
+    case 'phonepe':
+      return 'bg-violet-500/15 text-violet-400'
+    case 'paytm':
+      return 'bg-sky-500/15 text-sky-400'
+    case 'generic_upi':
+      return 'bg-brand-500/15 text-brand-400'
     default:
       return 'bg-slate-700/60 text-ink-muted'
   }
@@ -421,6 +507,10 @@ async function handleFileUpload(e: Event) {
   reader.readAsDataURL(file)
 }
 
+function hasAmountLikeText(text: string) {
+  return /₹|rs|inr|\b\d+(?:\.\d{1,2})\b/i.test(text)
+}
+
 async function processImage(imageData: string) {
   console.log('processImage called')
   step.value = 'processing'
@@ -442,19 +532,53 @@ async function processImage(imageData: string) {
   ocrConfidence.value = ocrResult.confidence
   processingStep.value = 1
 
-  documentResult.value = documentClassifier.classify(ocrResult.text)
+  documentResult.value = documentClassifier.classify(ocrText.value)
   processingStep.value = 2
 
-  console.log('Extracting fields from:', ocrResult.text)
-  const fields = extractor.extract(ocrResult.text)
-  console.log('Extracted fields:', fields)
-  Object.assign(editableFields, fields)
+  providerResult.value = providerClassifier.classify(ocrText.value)
   processingStep.value = 3
 
-  console.log('Running NLP...')
-  nlpResult.value = nlp.classify(ocrResult.text, fields.amount ?? 0)
-  console.log('NLP result:', nlpResult.value)
+  if (providerResult.value.kind !== 'unknown_provider' && !hasAmountLikeText(ocrText.value)) {
+    const providerOcrResult = await ocr.recognizeProviderAmountRegion(imageData, providerResult.value.kind)
+    if (providerOcrResult?.text) {
+      ocrText.value = [providerOcrResult.text, ocrText.value].filter(Boolean).join('\n')
+      ocrConfidence.value = Math.max(ocrConfidence.value, providerOcrResult.confidence)
+      console.log('Provider-focused OCR text:', providerOcrResult.text)
+    }
+  }
+
+  console.log('Extracting fields from:', ocrText.value)
+  const fields = extractor.extract(
+    ocrText.value,
+    documentResult.value?.kind ?? 'unknown',
+    providerResult.value?.kind ?? 'unknown_provider'
+  )
+  console.log('Extracted fields:', fields)
   processingStep.value = 4
+  
+  semanticResult.value = await semanticExtractor.extract(ocrText.value, {
+    documentKind: documentResult.value?.kind ?? 'unknown',
+    provider: providerResult.value?.kind ?? 'unknown_provider',
+  })
+  console.log('Semantic extraction:', semanticResult.value)
+
+  const mergedFields = {
+    transactionId: semanticResult.value.transaction_id || fields.transactionId || '',
+    upiId: fields.upiId || '',
+    amount: semanticResult.value.amount && semanticResult.value.amount > 0
+      ? semanticResult.value.amount
+      : (fields.amount ?? 0),
+    merchantName: semanticResult.value.receiver || fields.merchantName || '',
+    transactionDate: semanticResult.value.date || fields.transactionDate || '',
+  }
+
+  Object.assign(editableFields, mergedFields)
+  processingStep.value = 5
+
+  console.log('Running NLP...')
+  nlpResult.value = nlp.classify(ocrText.value, mergedFields.amount ?? 0)
+  console.log('NLP result:', nlpResult.value)
+  processingStep.value = 6
 
   step.value = 'review'
 }
@@ -491,7 +615,7 @@ async function confirmSave() {
     })
     step.value = 'saved'
   } catch (e: any) {
-    alert(e.message)
+    uiStore.error(e.message)
   }
 }
 
@@ -502,6 +626,8 @@ async function resetScan() {
   processingStep.value = 0
   nlpResult.value = null
   documentResult.value = null
+  providerResult.value = null
+  semanticResult.value = null
   ocrText.value = ''
 
   Object.assign(editableFields, {

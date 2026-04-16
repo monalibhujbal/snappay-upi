@@ -7,6 +7,9 @@ import {
   signInWithPhoneNumber,
   RecaptchaVerifier,
   onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  updateProfile,
 } from 'firebase/auth'
 
 export default defineNuxtPlugin(async () => {
@@ -48,6 +51,9 @@ export default defineNuxtPlugin(async () => {
       RecaptchaVerifier,
       // Keeping this wrapped makes the plugin API easier to use in components.
       onAuthStateChanged: (auth: any, cb: any) => onAuthStateChanged(auth, cb),
+      createUserWithEmailAndPassword: (auth: any, email: any, pass: any) => createUserWithEmailAndPassword(auth, email, pass),
+      signInWithEmailAndPassword: (auth: any, email: any, pass: any) => signInWithEmailAndPassword(auth, email, pass),
+      updateProfile: (user: any, profile: any) => updateProfile(user, profile),
     },
   }
 })

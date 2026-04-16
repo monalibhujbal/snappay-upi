@@ -46,5 +46,72 @@ export const useAuthStore = defineStore('auth', {
       this.user = null
       navigateTo('/auth')
     },
+
+    async signInWithEmail(email: string, pass: string) {
+      const { $auth, $signInWithEmailAndPassword } = useNuxtApp() as any
+      this.loading = true
+      this.error = null
+      try {
+        const result = await $signInWithEmailAndPassword($auth, email, pass)
+        this.user = result.user
+        navigateTo('/')
+      } catch (e: any) {
+        this.error = e.message
+        this.loading = false
+        throw e
+      }
+    },
+
+    async signUpWithEmail(email: string, pass: string, name: string) {
+      const { $auth, $createUserWithEmailAndPassword, $updateProfile, $db } = useNuxtApp() as any
+      this.loading = true
+      this.error = null
+      try {
+        const result = await $createUserWithEmailAndPassword($auth, email, pass)
+        
+        await $updateProfile(result.user, { displayName: name })
+        
+        // Also save to Firestore users collection
+        const { doc, setDoc } = await import('firebase/firestore')
+        await setDoc(doc($db, 'users', result.user.uid), {
+          displayName: name,
+          email: email,
+          createdAt: new Date().toISOString()
+        })
+        
+        this.user = { ...result.user, displayName: name }
+        navigateTo('/')
+      } catch (e: any) {
+        this.error = e.message
+        this.loading = false
+        throw e
+      }
+    },
+
+    async updateUserProfile(data: { displayName?: string, bio?: string, address?: string }) {
+      if (!this.user) return
+      const { $auth, $updateProfile, $db } = useNuxtApp() as any
+      this.loading = true
+      try {
+        if (data.displayName) {
+          await $updateProfile(this.user, { displayName: data.displayName })
+          this.user = { ...this.user, displayName: data.displayName } as User
+        }
+        
+        // Save extra data to Firestore
+        const { doc, setDoc } = await import('firebase/firestore')
+        await setDoc(doc($db, 'users', this.user.uid), {
+          ...(data.displayName ? { displayName: data.displayName } : {}),
+          ...(data.bio !== undefined ? { bio: data.bio } : {}),
+          ...(data.address !== undefined ? { address: data.address } : {})
+        }, { merge: true })
+        
+      } catch (e: any) {
+        this.error = e.message
+        throw e
+      } finally {
+        this.loading = false
+      }
+    }
   },
 })

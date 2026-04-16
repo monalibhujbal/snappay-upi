@@ -12,7 +12,7 @@ export function useCamera() {
         try {
             stream.value = await navigator.mediaDevices.getUserMedia({
                 video: {
-                    facingMode: 'environment',
+                    facingMode: { ideal: 'environment' },
                     width: { ideal: 1920 },
                     height: { ideal: 1080 }
                 }
@@ -22,8 +22,16 @@ export function useCamera() {
             isActive.value = true
             error.value = null
         } catch (e) {
-            error.value = e instanceof Error ? e.message : 'Camera access denied'
-            isActive.value = false
+            try {
+                stream.value = await navigator.mediaDevices.getUserMedia({ video: true })
+                el.srcObject = stream.value
+                await el.play()
+                isActive.value = true
+                error.value = null
+            } catch (fallbackError) {
+                error.value = fallbackError instanceof Error ? fallbackError.message : 'Camera access denied'
+                isActive.value = false
+            }
         }
     }
 
