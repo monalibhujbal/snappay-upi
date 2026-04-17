@@ -1,5 +1,6 @@
 import { initializeApp, getApps } from 'firebase/app'
 import { getFirestore } from 'firebase/firestore'
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
 import {
   getAuth,
   GoogleAuthProvider,
@@ -29,6 +30,7 @@ export default defineNuxtPlugin(async () => {
     : initializeApp(firebaseConfig)
 
   const db = getFirestore(app)
+  const storage = getStorage(app)
   const auth = getAuth(app)
   const authStore = useAuthStore()
 
@@ -45,6 +47,10 @@ export default defineNuxtPlugin(async () => {
       firebase: app,
       db,
       auth,
+      storage,
+      storageRef,
+      uploadBytes,
+      getDownloadURL,
       GoogleAuthProvider,
       signInWithPopup: (auth: any, provider: any) => signInWithPopup(auth, provider),
       signInWithPhoneNumber: (auth: any, phone: any, recaptcha: any) => signInWithPhoneNumber(auth, phone, recaptcha),

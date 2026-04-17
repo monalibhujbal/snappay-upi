@@ -8,78 +8,7 @@ const PROMPT_TEMPLATE = `You are a highly reliable information extraction system
 
 You will be given OCR-extracted text from a receipt image. The text may be noisy, partially incorrect, or unstructured.
 
-Your task is to interpret the text semantically (like a human reader) and extract the correct transaction details.
-
-----------------------------------------
-CORE OBJECTIVE
-----------------------------------------
-Extract the primary transaction details accurately, even when:
-- Formatting varies across apps (GPay, PhonePe, Paytm, etc.)
-- Multiple numbers are present
-- OCR errors exist
-
-----------------------------------------
-FIELDS TO EXTRACT
-----------------------------------------
-Return a JSON object with:
-- amount: number (only the actual paid/sent amount)
-- currency: string (default "INR" if ₹, Rs, INR present)
-- receiver: string (merchant/person receiving money)
-- transaction_id: string (UPI reference / txn ID)
-- date: string (ISO format YYYY-MM-DD if possible)
-
-----------------------------------------
-REASONING RULES
-----------------------------------------
-1. AMOUNT SELECTION (CRITICAL)
-   - Prioritize numbers associated with:
-     "paid", "sent", "debited", "transferred"
-   - Ignore:
-     cashback, rewards, wallet balance, available balance
-   - If multiple candidates exist:
-     choose the most contextually relevant transaction amount
-
-2. CONTEXTUAL UNDERSTANDING
-   - Do NOT rely on fixed templates or positions
-   - Use surrounding words and semantics to infer meaning
-   - Handle variations like:
-     "Paid ₹500", "₹500 sent", "Amount: 500 INR"
-
-3. OCR ERROR HANDLING
-   - Correct common OCR issues:
-     "Rs." → INR
-     "5OO" → 500 (letter O vs zero)
-     extra spaces or broken words
-   - Infer missing structure where possible
-
-4. RECEIVER IDENTIFICATION
-   - Extract entity following patterns like:
-     "to <name>", "paid to <name>", "sent to <name>"
-   - Prefer human-readable names over IDs
-
-5. DATE NORMALIZATION
-   - Convert formats like:
-     12/02/2026 → 2026-02-12
-     Feb 12, 2026 → 2026-02-12
-   - If unclear, return raw string
-
-6. TRANSACTION ID
-   - Look for:
-     "UPI Ref", "Txn ID", "Transaction ID", "Ref No"
-
-----------------------------------------
-OUTPUT FORMAT (STRICT)
-----------------------------------------
-- Return ONLY valid JSON
-- No explanations, no extra text
-- Use null for missing fields
-
-----------------------------------------
-CONFIDENCE HEURISTIC (IMPLICIT)
-----------------------------------------
-- Prefer high-certainty fields
-- Avoid guessing when ambiguous
-- If unsure, return null instead of incorrect data`
+Your task is to interpret the text semantically (like a human reader) and extract the correct transaction details.`
 
 const MONTHS: Record<string, number> = {
     jan: 1,
@@ -107,7 +36,7 @@ function normalizeText(text: string) {
     return text
         .replace(/\r\n/g, '\n')
         .replace(/[|]/g, 'I')
-        .replace(/â‚¹|Ã¢â€šÂ¹/g, '₹')
+        .replace(/Ã¢â€šÂ¹|ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¹/g, '₹')
         .replace(/\bR(?=\s*\d)/g, '₹')
         .replace(/\bRS(?=\s*\d)/gi, 'Rs')
         .replace(/\b(?:rs|rs\.|inr)\b/gi, 'Rs')
@@ -121,7 +50,7 @@ function getLines(text: string) {
     return normalizeText(text).split('\n').map(line => line.trim()).filter(Boolean)
 }
 
-function buildContext(text: string, index: number, radius = 48) {
+function buildContext(text: string, index: number, radius = 28) {
     const left = Math.max(0, index - radius)
     const right = Math.min(text.length, index + radius)
     return text.slice(left, right).toLowerCase()
@@ -131,6 +60,7 @@ function parseAmount(raw: string) {
     const cleaned = raw
         .replace(/[₹,]/g, '')
         .replace(/\b(?:rs|inr)\b/gi, '')
+        .replace(/(?<=\d)[oO](?=\d)/g, '0')
         .trim()
 
     const amount = Number.parseFloat(cleaned)
@@ -161,6 +91,8 @@ function scoreAmountCandidate(text: string, raw: string, index: number) {
         'money received',
         'you paid',
         'payment',
+        'paid successfully',
+        'transaction successful',
     ]
 
     const negativeCues = [
@@ -174,8 +106,9 @@ function scoreAmountCandidate(text: string, raw: string, index: number) {
         'upi transaction id',
         'google transaction id',
         'ref no',
-        'phone',
         'mobile',
+        'phone',
+        'utr',
     ]
 
     for (const cue of positiveCues) {
@@ -186,14 +119,14 @@ function scoreAmountCandidate(text: string, raw: string, index: number) {
         if (context.includes(cue)) score -= cue.includes(' ') ? 5 : 2
     }
 
-    if (/₹|rs|inr/i.test(raw)) score += 10
-    if (/^\s*(?:₹|rs)?\s*\d+(?:\.\d{1,2})?\s*$/i.test(raw)) score += 12
-
+    if (/₹|rs|inr/i.test(raw)) score += 12
+    if (/^\s*(?:₹|rs)?\s*[\d,]+(?:\.\d{1,2})?\s*$/i.test(raw)) score += 14
     return score
 }
 
 function extractAmount(text: string) {
     const normalized = normalizeText(text)
+    const lines = getLines(normalized)
     const candidates: AmountCandidate[] = []
     const seen = new Set<string>()
     const amountRegex = /(?:₹|rs\.?|inr)?\s*(\d{1,6}(?:,\d{2,3})*(?:\.\d{1,2})?|\d{1,6}(?:\.\d{1,2})?)/gi
@@ -218,6 +151,19 @@ function extractAmount(text: string) {
         })
     }
 
+    for (const [lineIndex, line] of lines.slice(0, 8).entries()) {
+        const match = line.match(/(?:₹|rs\.?|inr)\s*[:\-]?\s*(\d{1,6}(?:,\d{2,3})*(?:\.\d{1,2})?)/i)
+        if (!match?.[0]) continue
+        const value = parseAmount(match[0])
+        if (value === null) continue
+        candidates.push({
+            value,
+            raw: match[0],
+            index: normalized.indexOf(line),
+            score: 32 - lineIndex,
+        })
+    }
+
     return candidates.sort((a, b) => b.score - a.score)[0]?.value ?? null
 }
 
@@ -232,12 +178,14 @@ function cleanEntity(value: string) {
 function extractReceiver(text: string) {
     const lines = getLines(text)
 
-    const directLine = lines.find(line =>
-        /^(paid to|sent to|to:|to )/i.test(line)
-    )
-    if (directLine) {
-        return cleanEntity(directLine.replace(/^(paid to|sent to|to:|to )\s*/i, '')) || null
+    const standaloneIndex = lines.findIndex(line => /^(paid to|sent to|to:|to|transfer to)$/i.test(line))
+    if (standaloneIndex !== -1) {
+        const nextLine = lines[standaloneIndex + 1]
+        if (nextLine) return cleanEntity(nextLine) || null
     }
+
+    const directLine = lines.find(line => /^(paid to|sent to|to:|to )/i.test(line))
+    if (directLine) return cleanEntity(directLine.replace(/^(paid to|sent to|to:|to )\s*/i, '')) || null
 
     const match = normalizeText(text).match(/(?:paid to|sent to|to)\s+([A-Za-z0-9\s&.'-]{2,60})/i)
     return match?.[1] ? cleanEntity(match[1]) : null
@@ -246,9 +194,7 @@ function extractReceiver(text: string) {
 function extractSender(text: string) {
     const lines = getLines(text)
     const directLine = lines.find(line => /^(from:|from )/i.test(line))
-    if (directLine) {
-        return cleanEntity(directLine.replace(/^(from:|from )\s*/i, '')) || null
-    }
+    if (directLine) return cleanEntity(directLine.replace(/^(from:|from )\s*/i, '')) || null
 
     const match = normalizeText(text).match(/from\s+([A-Za-z0-9\s&.'-]{2,60})/i)
     return match?.[1] ? cleanEntity(match[1]) : null
@@ -256,7 +202,7 @@ function extractSender(text: string) {
 
 function extractTransactionId(text: string) {
     const patterns = [
-        /(?:upi\s*ref(?:erence)?\s*(?:no|number)?|utr|rrn|txn\s*id|transaction\s*id|ref(?:erence)?\s*no)[:\s-]*([A-Za-z0-9_-]{8,30})/i,
+        /(?:upi\s*ref(?:erence)?\s*(?:no|number)?|utr|rrn|txn\s*id|transaction\s*id|ref(?:erence)?\s*no|google transaction id)[:\s-]*([A-Za-z0-9_-]{8,30})/i,
         /\b(\d{10,20})\b/,
     ]
 
@@ -277,7 +223,6 @@ function normalizeDate(raw: string | null) {
         const day = Number.parseInt(monthName[1] ?? '', 10)
         const month = MONTHS[(monthName[2] ?? '').slice(0, 3).toLowerCase()]
         const year = Number.parseInt(monthName[3] ?? '', 10)
-
         if (day && month && year) {
             const fullYear = year < 100 ? 2000 + year : year
             return `${fullYear.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`
@@ -290,7 +235,6 @@ function normalizeDate(raw: string | null) {
         const month = Number.parseInt(slashDate[2] ?? '', 10)
         const year = Number.parseInt(slashDate[3] ?? '', 10)
         const fullYear = year < 100 ? 2000 + year : year
-
         if (day && month && fullYear) {
             return `${fullYear.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`
         }
@@ -298,14 +242,13 @@ function normalizeDate(raw: string | null) {
 
     const isoDate = compact.match(/(\d{4})-(\d{2})-(\d{2})/)
     if (isoDate) return isoDate[0]
-
     return raw
 }
 
 function extractDate(text: string) {
     const normalized = normalizeText(text)
     const patterns = [
-        /(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{2,4})/i,
+        /(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4})/i,
         /(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})/,
         /(\d{4}-\d{2}-\d{2})/,
     ]
@@ -318,19 +261,55 @@ function extractDate(text: string) {
     return null
 }
 
-function detectStatus(text: string, kind?: DocumentKind) {
+function detectStatus(text: string, kind?: DocumentKind): 'completed' | 'failed' | 'pending' | null {
     const lower = normalizeText(text).toLowerCase()
     if (kind === 'upi_receipt_failed' || /failed|declined|unsuccessful/.test(lower)) return 'failed'
     if (kind === 'upi_receipt_pending' || /pending|processing|awaiting/.test(lower)) return 'pending'
-    if (/completed|successful|success/.test(lower)) return 'completed'
+    if (/completed|successful|success|paid successfully/.test(lower)) return 'completed'
     return null
+}
+
+function detectDirection(text: string, kind?: DocumentKind): 'sent' | 'received' | 'unknown' | null {
+    const lower = normalizeText(text).toLowerCase()
+    if (kind === 'upi_receipt_failed' || kind === 'upi_receipt_pending') return 'unknown'
+
+    const sentPhrases = [
+        'paid to',
+        'sent to',
+        'debited from',
+        'you paid',
+        'paid successfully',
+        'transaction successful',
+        'transfer to',
+    ]
+
+    const receivedPhrases = [
+        'received from',
+        'money received',
+        'credited to',
+        'credited in',
+        'you received',
+        'collected from',
+    ]
+
+    let sentScore = sentPhrases.filter(phrase => lower.includes(phrase)).length
+    let receivedScore = receivedPhrases.filter(phrase => lower.includes(phrase)).length
+
+    if (/(^|\n)\s*to\s*:/.test(lower) && /(^|\n)\s*from\s*:/.test(lower)) sentScore += 3
+    if (/(^|\n)\s*paid to\b/.test(lower)) sentScore += 4
+    if (/(^|\n)\s*received from\b/.test(lower)) receivedScore += 4
+    if (/(^|\n)\s*money received\b/.test(lower)) receivedScore += 5
+
+    if (sentScore > receivedScore) return 'sent'
+    if (receivedScore > sentScore) return 'received'
+    return sentScore || receivedScore ? 'unknown' : null
 }
 
 function detectCurrency(text: string) {
     return /₹|rs|inr/i.test(normalizeText(text)) ? 'INR' : null
 }
 
-function detectProvider(text: string, provider?: ProviderKind) {
+function detectProvider(text: string, provider?: ProviderKind): ProviderKind | null {
     if (provider && provider !== 'unknown_provider') return provider
 
     const lower = normalizeText(text).toLowerCase()
@@ -342,15 +321,11 @@ function detectProvider(text: string, provider?: ProviderKind) {
 }
 
 let qaPipeline: any = null
+let qaPipelineFailed = false
 
 export function useSemanticExtractor() {
     function buildPrompt(ocrText: string) {
-        return `${PROMPT_TEMPLATE}
-
-----------------------------------------
-INPUT
-----------------------------------------
-${ocrText}`
+        return `${PROMPT_TEMPLATE}\n\nINPUT\n${ocrText}`
     }
 
     async function extract(
@@ -358,39 +333,40 @@ ${ocrText}`
         options?: { provider?: ProviderKind; documentKind?: DocumentKind }
     ): Promise<SemanticExtractionResult> {
         const normalized = normalizeText(ocrText)
-        
-        // Initial heuristic extraction
+
         let aiAmount = extractAmount(normalized)
         let aiReceiver = extractReceiver(normalized)
 
-        // WebAI QA with Transformers
         try {
-            if (!qaPipeline && typeof window !== 'undefined') {
+            if (!qaPipeline && typeof window !== 'undefined' && !qaPipelineFailed && (!aiAmount || !aiReceiver)) {
                 const transformers = await import('@xenova/transformers')
                 transformers.env.allowLocalModels = false
                 transformers.env.useBrowserCache = true
-                transformers.env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/'
+                transformers.env.backends.onnx.wasm.numThreads = 1
+                transformers.env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.14.0/dist/'
                 qaPipeline = await transformers.pipeline('question-answering', 'Xenova/distilbert-base-uncased-distilled-squad')
             }
 
             if (qaPipeline) {
-                // Ask the QA model for amount
-                const amountAns = await qaPipeline('What is the total amount paid?', normalized)
-                if (amountAns && amountAns.score > 0.3) {
-                    const cleanedAmount = parseAmount(amountAns.answer)
-                    if (cleanedAmount) aiAmount = cleanedAmount; 
+                if (!aiAmount) {
+                    const amountAns = await qaPipeline('What is the main transaction amount?', normalized)
+                    if (amountAns && amountAns.score > 0.3) {
+                        const cleanedAmount = parseAmount(amountAns.answer)
+                        if (cleanedAmount) aiAmount = cleanedAmount
+                    }
                 }
 
-                // Ask the QA model for receiver/merchant
-                const receiverAns = await qaPipeline('Who is the receiver or merchant?', normalized)
-                if (receiverAns && receiverAns.score > 0.3) {
-                     const cleanedReceiver = cleanEntity(receiverAns.answer)
-                     if (cleanedReceiver && cleanedReceiver.length > 2) aiReceiver = cleanedReceiver
+                if (!aiReceiver) {
+                    const receiverAns = await qaPipeline('Who received the money?', normalized)
+                    if (receiverAns && receiverAns.score > 0.3) {
+                        const cleanedReceiver = cleanEntity(receiverAns.answer)
+                        if (cleanedReceiver && cleanedReceiver.length > 2) aiReceiver = cleanedReceiver
+                    }
                 }
             }
-
-        } catch (e) {
-            console.warn('Transformer QA Failed:', e)
+        } catch (e: any) {
+            qaPipelineFailed = true
+            console.warn(`[Local AI] Transformer QA model unavailable in this environment: ${e.message}`)
         }
 
         return {
@@ -402,6 +378,7 @@ ${ocrText}`
             date: extractDate(normalized),
             status: detectStatus(normalized, options?.documentKind),
             provider: detectProvider(normalized, options?.provider),
+            direction: detectDirection(normalized, options?.documentKind),
         }
     }
 

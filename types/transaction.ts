@@ -1,6 +1,7 @@
 export type TransactionStatus =
     | 'pending'
     | 'verified'
+    | 'verified_manual'
     | 'failed'
     | 'flagged'
 
@@ -37,6 +38,9 @@ export interface UpiTransaction {
     nlpLabel: string
     nlpScore: number
     imageUrl?: string
+
+    ownerVerifiedMode?: 'auto' | 'manual'
+    statementUrl?: string
 }
 
 export interface OcrResult {
@@ -61,4 +65,5 @@ export interface SemanticExtractionResult {
     date: string | null
     status: string | null
     provider: string | null
+    direction: 'sent' | 'received' | 'unknown' | null
 }

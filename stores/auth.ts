@@ -68,9 +68,9 @@ export const useAuthStore = defineStore('auth', {
       this.error = null
       try {
         const result = await $createUserWithEmailAndPassword($auth, email, pass)
-        
+
         await $updateProfile(result.user, { displayName: name })
-        
+
         // Also save to Firestore users collection
         const { doc, setDoc } = await import('firebase/firestore')
         await setDoc(doc($db, 'users', result.user.uid), {
@@ -78,7 +78,7 @@ export const useAuthStore = defineStore('auth', {
           email: email,
           createdAt: new Date().toISOString()
         })
-        
+
         this.user = { ...result.user, displayName: name }
         navigateTo('/')
       } catch (e: any) {
@@ -88,7 +88,7 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
-    async updateUserProfile(data: { displayName?: string, bio?: string, address?: string }) {
+    async updateUserProfile(data: { displayName?: string, bio?: string, address?: string, legalName?: string }) {
       if (!this.user) return
       const { $auth, $updateProfile, $db } = useNuxtApp() as any
       this.loading = true
@@ -97,17 +97,51 @@ export const useAuthStore = defineStore('auth', {
           await $updateProfile(this.user, { displayName: data.displayName })
           this.user = { ...this.user, displayName: data.displayName } as User
         }
-        
+
         // Save extra data to Firestore
         const { doc, setDoc } = await import('firebase/firestore')
         await setDoc(doc($db, 'users', this.user.uid), {
           ...(data.displayName ? { displayName: data.displayName } : {}),
           ...(data.bio !== undefined ? { bio: data.bio } : {}),
-          ...(data.address !== undefined ? { address: data.address } : {})
+          ...(data.address !== undefined ? { address: data.address } : {}),
+          ...(data.legalName !== undefined ? { legalName: data.legalName } : {})
         }, { merge: true })
-        
+
       } catch (e: any) {
         this.error = e.message
+        throw e
+      } finally {
+        this.loading = false
+      }
+    },
+
+    async signInWithGoogle() {
+      const { $auth, $signInWithPopup, $GoogleAuthProvider, $db } = useNuxtApp() as any
+      this.loading = true
+      this.error = null
+
+      try {
+        const provider = new $GoogleAuthProvider()
+        const result = await $signInWithPopup($auth, provider)
+
+        // Save user info in Firestore
+        const { doc, setDoc } = await import('firebase/firestore')
+        await setDoc(
+          doc($db, 'users', result.user.uid),
+          {
+            displayName: result.user.displayName,
+            email: result.user.email,
+            photoURL: result.user.photoURL,
+          },
+          { merge: true }
+        )
+
+        this.user = result.user
+        navigateTo('/')
+      } catch (e: any) {
+        console.error(e)
+        this.error = e.message
+        this.loading = false
         throw e
       } finally {
         this.loading = false

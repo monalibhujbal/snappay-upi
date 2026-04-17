@@ -275,13 +275,46 @@
         </div>
       </div>
 
+      <div v-if="ownershipStatus !== 'matched'"
+           class="bg-rose-500/10 border border-rose-500/25 rounded-xl
+                  px-4 py-4 mb-4 flex flex-col gap-3">
+        <div class="flex items-start gap-3">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+               stroke="#f43f5e" stroke-width="2" class="mt-0.5 flex-shrink-0">
+            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          <div>
+            <p class="text-rose-400 text-sm font-medium mb-1">Verify Ownership</p>
+            <p class="text-rose-400/80 text-xs">
+              We could not verify that this receipt belongs to you. Please confirm it manually.
+            </p>
+          </div>
+        </div>
+
+        <label class="flex items-center gap-2 mt-1 cursor-pointer">
+          <input type="checkbox" v-model="hasConfirmedOwnership" 
+                 class="w-4 h-4 rounded border-slate-600 bg-surface-card text-brand-500
+                        focus:ring-brand-500/30" />
+          <span class="text-sm text-ink-primary">I confirm this is my personal receipt</span>
+        </label>
+
+        <div class="mt-2 pt-3 border-t border-rose-500/20">
+          <label class="text-xs text-rose-400 mb-1 block">Upload matching bank statement (Optional)</label>
+          <input type="file" accept="image/*,.pdf" 
+                 @change="e => statementFile = (e.target as HTMLInputElement).files?.[0] || null" 
+                 class="text-xs text-ink-muted file:mr-4 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-surface-card file:text-ink-primary hover:file:bg-surface-elevated" />
+        </div>
+      </div>
+
       <div class="flex gap-3">
         <button class="btn-ghost flex-1" @click="resetScan">
           Rescan
         </button>
         <button
           class="btn-primary flex-1"
-          :disabled="txns.isLoading.value || isDuplicateReceipt"
+          :disabled="txns.isLoading.value || isDuplicateReceipt || (ownershipStatus !== 'matched' && !hasConfirmedOwnership)"
           @click="confirmSave"
         >
           {{ txns.isLoading.value ? 'Saving...' : 'Confirm & Save' }}
@@ -330,6 +363,7 @@ import type { DocumentClassificationResult } from '~/composables/useDocumentClas
 import type { ProviderClassificationResult } from '~/composables/useProviderClassifier'
 import type { SemanticExtractionResult } from '~/types/transaction'
 import { useUIStore } from '~/stores/ui'
+import { useAuthStore } from '~/stores/auth'
 
 definePageMeta({ middleware: ['auth'] })
 
@@ -341,8 +375,9 @@ const documentClassifier = useDocumentClassifier()
 const providerClassifier = useProviderClassifier()
 const semanticExtractor = useSemanticExtractor()
 const txns = useTransactions()
-const { $auth } = useNuxtApp() as any
+const { $auth, $storage, $storageRef, $uploadBytes, $getDownloadURL } = useNuxtApp() as any
 const uiStore = useUIStore()
+const authStore = useAuthStore()
 
 const lowConfidence = ref(false)
 const ocrConfidence = ref(0)
@@ -359,6 +394,10 @@ const semanticResult = ref<SemanticExtractionResult | null>(null)
 const ocrText = ref('')
 const capturedImageData = ref<string | null>(null)
 const isDuplicateReceipt = ref(false)
+const ownershipStatus = ref<'matched' | 'ambiguous' | 'mismatched'>('matched')
+const hasConfirmedOwnership = ref(false)
+const statementFile = ref<File | null>(null)
+const userLegalName = ref('')
 
 const processingSteps = [
   { label: 'Running OCR...' },
@@ -474,6 +513,20 @@ const documentWarningText = computed(() => {
 
 onMounted(async () => {
   if (videoRef.value) await camera.startCamera(videoRef.value)
+
+  const uid = $auth.currentUser?.uid
+  if (uid) {
+    try {
+      const { doc, getDoc } = await import('firebase/firestore')
+      const { $db } = useNuxtApp() as any
+      const docSnap = await getDoc(doc($db, 'users', uid))
+      if (docSnap.exists()) {
+        userLegalName.value = docSnap.data().legalName?.toLowerCase() || ''
+      }
+    } catch (e) {
+      console.error('Failed to fetch user profile', e)
+    }
+  }
 })
 
 async function handleCapture() {
@@ -507,10 +560,6 @@ async function handleFileUpload(e: Event) {
   reader.readAsDataURL(file)
 }
 
-function hasAmountLikeText(text: string) {
-  return /₹|rs|inr|\b\d+(?:\.\d{1,2})\b/i.test(text)
-}
-
 async function processImage(imageData: string) {
   console.log('processImage called')
   step.value = 'processing'
@@ -538,7 +587,7 @@ async function processImage(imageData: string) {
   providerResult.value = providerClassifier.classify(ocrText.value)
   processingStep.value = 3
 
-  if (providerResult.value.kind !== 'unknown_provider' && !hasAmountLikeText(ocrText.value)) {
+  if (providerResult.value.kind !== 'unknown_provider') {
     const providerOcrResult = await ocr.recognizeProviderAmountRegion(imageData, providerResult.value.kind)
     if (providerOcrResult?.text) {
       ocrText.value = [providerOcrResult.text, ocrText.value].filter(Boolean).join('\n')
@@ -577,8 +626,35 @@ async function processImage(imageData: string) {
 
   console.log('Running NLP...')
   nlpResult.value = nlp.classify(ocrText.value, mergedFields.amount ?? 0)
+  if (semanticResult.value?.direction && semanticResult.value.direction !== 'unknown') {
+    nlpResult.value = {
+      ...nlpResult.value,
+      label: semanticResult.value.direction,
+      score: Math.max(nlpResult.value?.score ?? 0, 0.82),
+    }
+  }
   console.log('NLP result:', nlpResult.value)
   processingStep.value = 6
+
+  const userName = authStore.user?.displayName?.toLowerCase() || ''
+  const nameToMatch = userLegalName.value || userName
+
+  if (!nameToMatch || nameToMatch.length < 3) {
+    ownershipStatus.value = 'ambiguous'
+  } else {
+    const ocrTextLower = ocrText.value.toLowerCase()
+    
+    if (ocrTextLower.includes(nameToMatch)) {
+      ownershipStatus.value = 'matched'
+    } else {
+      const nameParts = nameToMatch.split(/\s+/).filter(p => p.length > 2)
+      if (nameParts.length > 0 && nameParts.every(part => ocrTextLower.includes(part))) {
+        ownershipStatus.value = 'matched'
+      } else {
+        ownershipStatus.value = 'ambiguous'
+      }
+    }
+  }
 
   step.value = 'review'
 }
@@ -603,16 +679,34 @@ async function confirmSave() {
   if (!uid) return
 
   try {
-    await txns.saveTransaction({
+    let statementUrl = ''
+    if (statementFile.value) {
+      uiStore.success('Uploading statement...')
+      const stRef = $storageRef($storage, `statements/${uid}/${Date.now()}_${statementFile.value.name}`)
+      await $uploadBytes(stRef, statementFile.value)
+      statementUrl = await $getDownloadURL(stRef)
+    }
+
+    const oMode = ownershipStatus.value === 'matched' ? 'auto' : 'manual'
+    const finalStatus = oMode === 'manual' ? 'verified_manual' : resolveStatus()
+
+    const txnData: any = {
       userId: uid,
       ...editableFields,
       direction: nlpResult.value?.label === 'sent' ? 'sent' : 'received',
-      status: resolveStatus(),
+      status: finalStatus as any,
       ocrRawText: ocrText.value,
       ocrConfidence: ocrConfidence.value,
       nlpLabel: nlpResult.value?.label ?? 'unknown',
       nlpScore: nlpResult.value?.score ?? 0,
-    })
+      ownerVerifiedMode: oMode,
+    }
+    
+    if (statementUrl) {
+      txnData.statementUrl = statementUrl
+    }
+
+    await txns.saveTransaction(txnData)
     step.value = 'saved'
   } catch (e: any) {
     uiStore.error(e.message)
@@ -629,6 +723,12 @@ async function resetScan() {
   providerResult.value = null
   semanticResult.value = null
   ocrText.value = ''
+  ownershipStatus.value = 'matched'
+  hasConfirmedOwnership.value = false
+  statementFile.value = null
+  isDuplicateReceipt.value = false
+  lowConfidence.value = false
+  ocrConfidence.value = 0
 
   Object.assign(editableFields, {
     transactionId: '',

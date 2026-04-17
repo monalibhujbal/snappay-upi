@@ -330,30 +330,9 @@ async function signInGoogle() {
   loading.value = true
   authStore.setError('')
   try {
-    const provider = new $GoogleAuthProvider()
-    const result   = await $signInWithPopup($auth, provider)
-    authStore.setUser(result.user)
-    
-    // Save to Firestore as well just to be thorough
-    try {
-      const { $db } = useNuxtApp() as any
-      const { doc, setDoc, getDoc } = await import('firebase/firestore')
-      const userRef = doc($db, 'users', result.user.uid)
-      const userSnap = await getDoc(userRef)
-      if (!userSnap.exists()) {
-        await setDoc(userRef, {
-          displayName: result.user.displayName || 'Google User',
-          email: result.user.email,
-          createdAt: new Date().toISOString()
-        })
-      }
-    } catch(err) {
-      console.error("Firestore sync error:", err)
-    }
-    
-    navigateTo('/')
+    await authStore.signInWithGoogle()
   } catch (e: any) {
-    authStore.setError(e.message)
+    uiStore.error(e.message)
   } finally {
     loading.value = false
   }

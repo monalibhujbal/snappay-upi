@@ -34,8 +34,8 @@ export default defineNuxtConfig({
     routeRules: {
       '/**': {
         headers: {
-          'Cross-Origin-Opener-Policy': 'same-origin',
-          'Cross-Origin-Embedder-Policy': 'require-corp'
+          'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+          'Cross-Origin-Embedder-Policy': 'unsafe-none'
         }
       }
     }

@@ -91,12 +91,12 @@
                     justify-between flex-wrap gap-2">
           <div class="flex items-center gap-2">
             <span class="text-xs px-2 py-0.5 rounded-full"
-                  :class="txn.status === 'verified'
+                  :class="(txn.status === 'verified' || txn.status === 'verified_manual')
                     ? 'bg-brand-500/10 text-brand-400'
                     : txn.status === 'flagged'
                       ? 'bg-amber-500/10 text-amber-400'
                       : 'bg-slate-700/50 text-ink-muted'">
-              {{ txn.status }}
+              {{ txn.status === 'verified_manual' ? 'Verified (Manual)' : txn.status }}
             </span>
             <span class="text-xs px-2 py-0.5 rounded-full bg-surface-input text-ink-muted">
               {{ txn.direction }}

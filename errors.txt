@@ -1,0 +1,5 @@
+﻿[90m[[90mnuxt:tailwindcss[90m][39m [36mi[39m Using default Tailwind CSS file
+composables/useFieldExtractor.ts(255,16): error TS2532: Object is possibly 'undefined'.
+composables/useSemanticExtractor.ts(237,45): error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+pages/profile.vue(69,17): error TS2532: Object is possibly 'undefined'.

@@ -9,6 +9,7 @@ const ocrProgress = ref(0)
 const DEFAULT_PARAMS = {
     tessedit_pageseg_mode: '6' as any,
     preserve_interword_spaces: '1' as any,
+    tessedit_char_whitelist: '' as any,
 }
 
 const AMOUNT_PARAMS = {
@@ -22,12 +23,27 @@ interface OcrVariant {
     imageData: string
 }
 
+interface OcrVariantResult {
+    label: string
+    text: string
+    confidence: number
+    score: number
+}
+
 interface ProviderCrop {
     x: number
     y: number
     width: number
     height: number
     scale?: number
+}
+
+interface ParsedAmountCandidate {
+    amount: number
+    text: string
+    label: string
+    confidence: number
+    score: number
 }
 
 async function getWorker(): Promise<any> {
@@ -225,13 +241,27 @@ function scoreAmountBandText(text: string, confidence: number) {
     return score
 }
 
-function extractLikelyAmount(text: string) {
-    const normalized = normalizeOcrText(text)
+function normalizeAmountText(text: string) {
+    return normalizeOcrText(text)
         .replace(/â‚¹|Ã¢â€šÂ¹/g, '₹')
         .replace(/\bRS(?=\s*\d)/gi, 'Rs')
         .replace(/\bR(?=\s*\d)/g, '₹')
+}
 
-    // Find the first likely amount even if it has commas
+function extractLikelyAmount(text: string) {
+    const normalized = normalizeAmountText(text)
+
+    const exactMoneyLine = normalized
+        .split('\n')
+        .map(line => line.trim())
+        .find(line => /^(?:₹|rs\.?|inr)?\s*(\d{1,3}(?:,\d{2,3})*(?:\.\d{1,2})?|\d{1,6}(?:\.\d{1,2})?)$/i.test(line))
+
+    if (exactMoneyLine) {
+        const exactMatch = exactMoneyLine.match(/^(?:₹|rs\.?|inr)?\s*(\d{1,3}(?:,\d{2,3})*(?:\.\d{1,2})?|\d{1,6}(?:\.\d{1,2})?)$/i)
+        const exactAmount = Number.parseFloat((exactMatch?.[1] ?? '').replace(/,/g, ''))
+        if (Number.isFinite(exactAmount) && exactAmount > 0 && exactAmount <= 200000) return exactAmount
+    }
+
     const directMatch = normalized.match(/(?:₹|rs\.?|inr)?\s*(\d{1,3}(?:,\d{2,3})*(?:\.\d{1,2})?|\d{1,6}(?:\.\d{1,2})?)/i)
     if (!directMatch) return null
 
@@ -242,12 +272,65 @@ function extractLikelyAmount(text: string) {
     return amount
 }
 
+function getAmountBandIndex(label: string) {
+    const match = label.match(/amount-band-(\d+)/i)
+    return match ? Number.parseInt(match[1] ?? '', 10) : null
+}
+
+function getAmountBandPositionBonus(label: string, provider: ProviderKind) {
+    const index = getAmountBandIndex(label)
+    if (!index) return 0
+
+    if (provider === 'gpay') {
+        return Math.max(0, 20 - Math.abs(index - 8) * 4)
+    }
+
+    return 0
+}
+
+function scoreParsedAmountCandidate(result: OcrVariantResult, provider: ProviderKind): ParsedAmountCandidate | null {
+    const normalized = normalizeAmountText(result.text)
+    const lines = normalized.split('\n').map(line => line.trim()).filter(Boolean)
+    const exactLine = lines.find(line => /^(?:₹|rs\.?|inr)?\s*(\d{1,3}(?:,\d{2,3})*(?:\.\d{1,2})?|\d{1,6}(?:\.\d{1,2})?)$/i.test(line)) ?? ''
+    const amount = extractLikelyAmount(normalized)
+
+    if (amount === null) return null
+
+    let score = result.score + getAmountBandPositionBonus(result.label, provider)
+
+    if (exactLine) score += 34
+    if (/^(?:₹|rs\.?|inr)/i.test(exactLine)) score += 26
+    if (lines.length === 1) score += 12
+    if (lines.length > 2) score -= 14
+    if (/^\d{1,2}$/.test(exactLine || normalized)) score -= 18
+    if (amount < 100 && !/^(?:₹|rs\.?|inr)/i.test(exactLine)) score -= 8
+    if (/\b\d{7,}\b/.test(normalized)) score -= 20
+    if (/[A-Za-z]{2,}/.test(normalized.replace(/\b(?:rs|inr)\b/gi, '').replace(/[₹\d\s.,]/g, ''))) score -= 20
+    if ((exactLine || normalized).length <= 8) score += 10
+
+    return {
+        amount,
+        text: normalized,
+        label: result.label,
+        confidence: result.confidence,
+        score,
+    }
+}
+
+function collectParsedAmountCandidates(results: OcrVariantResult[], provider: ProviderKind) {
+    return results
+        .map(result => scoreParsedAmountCandidate(result, provider))
+        .filter((candidate): candidate is ParsedAmountCandidate => candidate !== null)
+        .sort((a, b) => b.score - a.score)
+}
+
 async function runVariants(
     worker: any,
     variants: OcrVariant[],
-    mode: 'default' | 'amount' = 'default'
+    mode: 'default' | 'amount' = 'default',
+    earlyExitPredicate?: (text: string, score: number) => boolean
 ) {
-    const results: Array<{ label: string; text: string; confidence: number; score: number }> = []
+    const results: OcrVariantResult[] = []
 
     await worker.setParameters(mode === 'amount' ? AMOUNT_PARAMS : DEFAULT_PARAMS)
 
@@ -265,6 +348,11 @@ async function runVariants(
             confidence: data.confidence,
             score,
         })
+
+        if (earlyExitPredicate && earlyExitPredicate(text, score)) {
+            console.log(`Early exit condition met for ${variant.label}, skipping remaining variants to save CPU.`)
+            break
+        }
     }
 
     await worker.setParameters(DEFAULT_PARAMS)
@@ -347,6 +435,9 @@ function getProviderAmountBands(provider: ProviderKind): ProviderCrop[] {
                 { x: 0.28, y: 0.18, width: 0.44, height: 0.09, scale: 6.5 },
                 { x: 0.25, y: 0.19, width: 0.50, height: 0.10, scale: 7 },
                 { x: 0.22, y: 0.20, width: 0.56, height: 0.11, scale: 7 },
+                { x: 0.20, y: 0.22, width: 0.60, height: 0.12, scale: 7 },
+                { x: 0.18, y: 0.24, width: 0.64, height: 0.12, scale: 7 },
+                { x: 0.16, y: 0.26, width: 0.68, height: 0.12, scale: 7 },
             ]
         default:
             return []
@@ -473,19 +564,31 @@ export function useOcr() {
                 : []
 
             const amountResults = amountBandVariants.length
-                ? await runVariants(worker, amountBandVariants, 'amount')
+                ? await runVariants(worker, amountBandVariants, 'amount', (text, score) => {
+                    const normalized = normalizeAmountText(text)
+                    const parsedAmount = extractLikelyAmount(normalized)
+                    const exactMoneyLine = normalized
+                        .split('\n')
+                        .map(line => line.trim())
+                        .find(line => /^(?:₹|rs\.?|inr)\s*\d[\d,]*(?:\.\d{1,2})?$/i.test(line))
+
+                    return score >= 120 && parsedAmount !== null && !!exactMoneyLine
+                })
                 : []
 
-            const bestAmountResult = [...amountResults]
-                .filter(result => extractLikelyAmount(result.text) !== null)
-                .sort((a, b) => b.score - a.score)[0]
+            const parsedAmountCandidates = collectParsedAmountCandidates(amountResults, provider)
+            const bestAmountCandidate = parsedAmountCandidates[0]
+            const cleanAmount = bestAmountCandidate?.amount ?? null
 
-            const cleanAmount = bestAmountResult ? extractLikelyAmount(bestAmountResult.text) : null
+            const curatedAmountTexts = cleanAmount
+                ? parsedAmountCandidates
+                    .filter(candidate => candidate.score >= Math.max(bestAmountCandidate.score - 18, 110))
+                    .slice(0, 2)
+                    .map(candidate => candidate.text)
+                : []
 
             const mergedText = mergeTexts(
-                [...amountResults, ...providerResults]
-                    .sort((a, b) => b.score - a.score)
-                    .map(result => result.text)
+                [...curatedAmountTexts, ...providerResults.map(result => result.text)]
             )
 
             const stitchedText = cleanAmount

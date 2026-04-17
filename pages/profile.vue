@@ -66,7 +66,7 @@
       
       <div class="h-48 w-full mt-2">
         <Bar 
-          v-if="chartData.datasets[0].data.length > 0" 
+          v-if="(chartData.datasets[0]?.data?.length || 0) > 0" 
           :data="chartData" 
           :options="chartOptions" 
         />
@@ -197,6 +197,11 @@
           </div>
           
           <div class="mb-4">
+            <label class="text-xs text-ink-secondary mb-1.5 block">Legal Name (As on Bank)</label>
+            <input v-model="editForm.legalName" type="text" class="input-field w-full" placeholder="Full name for verification" />
+          </div>
+          
+          <div class="mb-4">
             <label class="text-xs text-ink-secondary mb-1.5 block">Bio</label>
             <textarea v-model="editForm.bio" class="input-field w-full h-20 resize-none" placeholder="Software Engineer, Foodie..."></textarea>
           </div>
@@ -252,7 +257,8 @@ const detailedProfile = ref({
   displayName: '',
   email: '',
   bio: '',
-  address: ''
+  address: '',
+  legalName: ''
 })
 
 const showEditModal = ref(false)
@@ -260,7 +266,8 @@ const savingProfile = ref(false)
 const editForm = reactive({
   displayName: '',
   bio: '',
-  address: ''
+  address: '',
+  legalName: ''
 })
 
 onMounted(async () => {
@@ -284,7 +291,8 @@ async function loadDetailedProfile() {
         displayName: data.displayName || authStore.displayName || '',
         email: data.email || authStore.userEmail || '',
         bio: data.bio || '',
-        address: data.address || ''
+        address: data.address || '',
+        legalName: data.legalName || ''
       }
     } else {
       detailedProfile.value.displayName = authStore.displayName || ''
@@ -294,6 +302,7 @@ async function loadDetailedProfile() {
     editForm.displayName = detailedProfile.value.displayName
     editForm.bio = detailedProfile.value.bio
     editForm.address = detailedProfile.value.address
+    editForm.legalName = detailedProfile.value.legalName
   } catch (error) {
     console.error("Failed to load user profile", error)
   }
@@ -305,12 +314,14 @@ async function saveProfile() {
     await authStore.updateUserProfile({
       displayName: editForm.displayName,
       bio: editForm.bio,
-      address: editForm.address
+      address: editForm.address,
+      legalName: editForm.legalName
     })
     
     detailedProfile.value.displayName = editForm.displayName
     detailedProfile.value.bio = editForm.bio
     detailedProfile.value.address = editForm.address
+    detailedProfile.value.legalName = editForm.legalName
     
     showEditModal.value = false
     uiStore.success('Profile updated successfully')
