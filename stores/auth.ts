@@ -9,6 +9,29 @@ interface AuthState {
   error: string | null
 }
 
+function mapAuthError(error: any) {
+  const code = error?.code ?? ''
+
+  switch (code) {
+    case 'auth/operation-not-allowed':
+      return 'Email/password sign-in is disabled in Firebase Console. Enable the Email/Password provider in Authentication > Sign-in method.'
+    case 'auth/email-already-in-use':
+      return 'This email is already registered. Try signing in instead.'
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+    case 'auth/invalid-login-credentials':
+      return 'Invalid email or password.'
+    case 'auth/user-not-found':
+      return 'No account was found for this email.'
+    case 'auth/invalid-email':
+      return 'Please enter a valid email address.'
+    case 'auth/weak-password':
+      return 'Password is too weak. Use at least 6 characters.'
+    default:
+      return error?.message || 'Authentication failed.'
+  }
+}
+
 export const useAuthStore = defineStore('auth', {
   state: (): AuthState => ({
     user: null,
@@ -52,11 +75,12 @@ export const useAuthStore = defineStore('auth', {
       this.loading = true
       this.error = null
       try {
-        const result = await $signInWithEmailAndPassword($auth, email, pass)
+        const normalizedEmail = email.trim().toLowerCase()
+        const result = await $signInWithEmailAndPassword($auth, normalizedEmail, pass)
         this.user = result.user
         navigateTo('/')
       } catch (e: any) {
-        this.error = e.message
+        this.error = mapAuthError(e)
         this.loading = false
         throw e
       }
@@ -67,22 +91,24 @@ export const useAuthStore = defineStore('auth', {
       this.loading = true
       this.error = null
       try {
-        const result = await $createUserWithEmailAndPassword($auth, email, pass)
+        const normalizedEmail = email.trim().toLowerCase()
+        const cleanName = name.trim()
+        const result = await $createUserWithEmailAndPassword($auth, normalizedEmail, pass)
 
-        await $updateProfile(result.user, { displayName: name })
+        await $updateProfile(result.user, { displayName: cleanName })
 
         // Also save to Firestore users collection
         const { doc, setDoc } = await import('firebase/firestore')
         await setDoc(doc($db, 'users', result.user.uid), {
-          displayName: name,
-          email: email,
+          displayName: cleanName,
+          email: normalizedEmail,
           createdAt: new Date().toISOString()
         })
 
-        this.user = { ...result.user, displayName: name }
+        this.user = result.user
         navigateTo('/')
       } catch (e: any) {
-        this.error = e.message
+        this.error = mapAuthError(e)
         this.loading = false
         throw e
       }
@@ -108,7 +134,7 @@ export const useAuthStore = defineStore('auth', {
         }, { merge: true })
 
       } catch (e: any) {
-        this.error = e.message
+        this.error = mapAuthError(e)
         throw e
       } finally {
         this.loading = false
@@ -140,7 +166,7 @@ export const useAuthStore = defineStore('auth', {
         navigateTo('/')
       } catch (e: any) {
         console.error(e)
-        this.error = e.message
+        this.error = mapAuthError(e)
         this.loading = false
         throw e
       } finally {

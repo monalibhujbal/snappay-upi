@@ -270,11 +270,15 @@ async function handleEmailAuth() {
   loading.value = true
   authStore.setError('')
   try {
+    const normalizedEmail = email.value.trim().toLowerCase()
+    const normalizedPassword = password.value
+    const normalizedName = name.value.trim()
+
     if (isSignUp.value) {
-      await authStore.signUpWithEmail(email.value, password.value, name.value)
+      await authStore.signUpWithEmail(normalizedEmail, normalizedPassword, normalizedName)
       uiStore.success('Account created successfully')
     } else {
-      await authStore.signInWithEmail(email.value, password.value)
+      await authStore.signInWithEmail(normalizedEmail, normalizedPassword)
       uiStore.success('Signed in successfully')
     }
   } catch (e: any) {
