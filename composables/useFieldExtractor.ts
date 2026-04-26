@@ -80,6 +80,9 @@ function normalizeOcrText(rawText: string) {
         .replace(/[\u2018\u2019]/g, "'")
         .replace(/[\u201C\u201D]/g, '"')
         .replace(/\u20B9|â‚¹|Ã¢â€šÂ¹|ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¹/g, RUPEE)
+        .replace(/\b2(?=\s*\d{2,6}(?:[,\.]\d+)?(?:\s|$))/g, RUPEE)
+        .replace(/^2(?=\s*\d{2,6}(?:[,\.]\d+)?)/gm, RUPEE)
+        .replace(/(?<=\s)2(?=\s*\d{2,6}(?:[,\.]\d+)?)/g, RUPEE)
         .replace(/\bR(?=\s*\d{1,6}(?:\.\d{1,2})?\b)/g, RUPEE)
         .replace(/\bRS(?=\s*\d{1,6}(?:\.\d{1,2})?\b)/gi, 'Rs')
         .replace(/\b(?:rs|rs\.|inr)\b/gi, 'Rs')
@@ -153,7 +156,7 @@ function lineHasCurrencyMarker(line: string) {
 
 function boostTopLineAmountCandidates(text: string, lines: string[], provider: ProviderKind) {
     const boosted: AmountCandidate[] = []
-    const topWindow = provider === 'gpay' ? 8 : provider === 'phonepe' ? 10 : 12
+    const topWindow = provider === 'gpay' ? 8 : provider === 'phonepe' ? 12 : provider === 'paytm' ? 12 : 10
 
     for (let i = 0; i < Math.min(topWindow, lines.length); i += 1) {
         const line = lines[i] ?? ''
@@ -197,7 +200,7 @@ function findProviderAnchoredAmount(text: string, lines: string[], provider: Pro
     }
 
     if (provider === 'phonepe') {
-        const topAmountLine = lines.slice(0, 8).find(line =>
+        const topAmountLine = lines.slice(0, 10).find(line =>
             /(?:₹|rs\.?|inr)\s*\d/.test(line) && !/debited from|utr|transaction id/i.test(line)
         )
         if (topAmountLine) {
@@ -207,19 +210,37 @@ function findProviderAnchoredAmount(text: string, lines: string[], provider: Pro
                 if (amount !== null) return amount
             }
         }
+
+        const paidToPattern = /paid to[\s\S]{0,60}?(?:₹|rs\.?|inr)\s*[:\-]?\s*(\d{1,6}(?:,\d{2,3})*(?:\.\d{1,2})?)/i
+        const paidToMatch = normalized.match(paidToPattern)
+        if (paidToMatch?.[1]) {
+            const amount = parseAmount(paidToMatch[1])
+            if (amount !== null) return amount
+        }
     }
 
     if (provider === 'paytm') {
-        const paidSuccessfullyMatch = normalized.match(/paid successfully[\s\S]{0,40}?(?:₹|rs\.?|inr)\s*[:\-]?\s*(\d{1,6}(?:,\d{2,3})*(?:\.\d{1,2})?)/i)
+        const paidSuccessfullyMatch = normalized.match(/paid successfully[\s\S]{0,60}?(?:₹|rs\.?|inr)\s*[:\-]?\s*(\d{1,6}(?:,\d{2,3})*(?:\.\d{1,2})?)/i)
         if (paidSuccessfullyMatch?.[1]) {
             const amount = parseAmount(paidSuccessfullyMatch[1])
             if (amount !== null) return amount
         }
 
-        const moneyReceivedMatch = normalized.match(/money received[\s\S]{0,40}?(?:₹|rs\.?|inr)\s*[:\-]?\s*(\d{1,6}(?:,\d{2,3})*(?:\.\d{1,2})?)/i)
+        const moneyReceivedMatch = normalized.match(/money received[\s\S]{0,60}?(?:₹|rs\.?|inr)\s*[:\-]?\s*(\d{1,6}(?:,\d{2,3})*(?:\.\d{1,2})?)/i)
         if (moneyReceivedMatch?.[1]) {
             const amount = parseAmount(moneyReceivedMatch[1])
             if (amount !== null) return amount
+        }
+
+        const topAmountLine = lines.slice(0, 10).find(line =>
+            /(?:₹|rs\.?|inr)\s*\d/.test(line) && !/upi ref no|from|to\s*:/i.test(line)
+        )
+        if (topAmountLine) {
+            const match = topAmountLine.match(/(?:₹|rs\.?|inr)\s*[:\-]?\s*(\d{1,6}(?:,\d{2,3})*(?:\.\d{1,2})?)/i)
+            if (match?.[1]) {
+                const amount = parseAmount(match[1])
+                if (amount !== null) return amount
+            }
         }
     }
 
@@ -306,7 +327,7 @@ function scoreVoucherCandidate(line: string, candidate: AmountCandidate) {
 function extractProviderMerchant(text: string, provider: ProviderKind) {
     const lines = getLines(text)
 
-    const standaloneIndex = lines.findIndex(line => /^(paid to|sent to|to\s*:?|to)$/i.test(line))
+    const standaloneIndex = lines.findIndex(line => /^(paid to|sent to|to\s*:?|to|from\s*:?|from)$/i.test(line))
     if (standaloneIndex !== -1) {
         const nextLine = lines[standaloneIndex + 1]
         if (nextLine) return nextLine.trim()
@@ -320,12 +341,26 @@ function extractProviderMerchant(text: string, provider: ProviderKind) {
     if (provider === 'phonepe') {
         const paidToLine = lines.find(line => /paid to/i.test(line))
         if (paidToLine) return paidToLine.replace(/paid to/i, '').trim()
+        
+        const namePattern = /^([A-Z][A-Z\s]{2,40})$/
+        for (const line of lines.slice(0, 8)) {
+            if (namePattern.test(line) && !/phonepe|transaction|payment|debited/i.test(line)) {
+                return line.trim()
+            }
+        }
     }
 
     if (provider === 'paytm') {
         const fromLine = lines.find(line => /^from\s*:/i.test(line))
         const toLine = lines.find(line => /^to\s*:/i.test(line))
         if (fromLine || toLine) return (toLine ?? fromLine ?? '').replace(/^(from|to)\s*:/i, '').trim()
+        
+        const namePattern = /^([A-Z][A-Za-z\s]{2,40})$/
+        for (const line of lines.slice(0, 8)) {
+            if (namePattern.test(line) && !/paytm|upiintent|rupees|paid/i.test(line)) {
+                return line.trim()
+            }
+        }
     }
 
     return RECEIPT_MERCHANT_REGEX.exec(text)?.[1]?.trim() ?? ''

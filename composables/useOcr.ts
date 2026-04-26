@@ -193,6 +193,10 @@ function grayscaleCanvas(
 function normalizeOcrText(text: string) {
     return text
         .replace(/\r\n/g, '\n')
+        .replace(/â‚¹|Ã¢â€šÂ¹|ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¹/g, '₹')
+        .replace(/\b2(?=\s*\d{1,6}(?:[,\.]\d+)?(?:\s|$))/g, '₹')
+        .replace(/^2(?=\s*\d{1,6}(?:[,\.]\d+)?)/gm, '₹')
+        .replace(/(?<=\s)2(?=\s*\d{1,6}(?:[,\.]\d+)?)/g, '₹')
         .replace(/[ \t]+/g, ' ')
         .replace(/\n{2,}/g, '\n')
         .trim()
@@ -243,9 +247,11 @@ function scoreAmountBandText(text: string, confidence: number) {
 
 function normalizeAmountText(text: string) {
     return normalizeOcrText(text)
-        .replace(/â‚¹|Ã¢â€šÂ¹/g, '₹')
+        .replace(/â‚¹|Ã¢â€šÂ¹|ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¹/g, '₹')
         .replace(/\bRS(?=\s*\d)/gi, 'Rs')
         .replace(/\bR(?=\s*\d)/g, '₹')
+        .replace(/\b2(?=\s*\d{2,6}(?:[,\.]\d+)?(?:\s|$))/g, '₹')
+        .replace(/^2(?=\s*\d{2,6}(?:[,\.]\d+)?)/gm, '₹')
 }
 
 function extractLikelyAmount(text: string) {
@@ -283,6 +289,14 @@ function getAmountBandPositionBonus(label: string, provider: ProviderKind) {
 
     if (provider === 'gpay') {
         return Math.max(0, 20 - Math.abs(index - 8) * 4)
+    }
+
+    if (provider === 'phonepe') {
+        return Math.max(0, 18 - Math.abs(index - 4) * 3)
+    }
+
+    if (provider === 'paytm') {
+        return Math.max(0, 18 - Math.abs(index - 4) * 3)
     }
 
     return 0
@@ -407,13 +421,15 @@ function getProviderCrops(provider: ProviderKind): ProviderCrop[] {
             ]
         case 'phonepe':
             return [
-                { x: 0.0, y: 0.05, width: 1.0, height: 0.40, scale: 2.5 },
-                { x: 0.1, y: 0.1, width: 0.8, height: 0.50, scale: 2.5 },
+                { x: 0.0, y: 0.05, width: 1.0, height: 0.35, scale: 3.2 },
+                { x: 0.15, y: 0.08, width: 0.70, height: 0.28, scale: 3.5 },
+                { x: 0.10, y: 0.12, width: 0.80, height: 0.40, scale: 2.8 },
             ]
         case 'paytm':
             return [
-                { x: 0.0, y: 0.05, width: 1.0, height: 0.40, scale: 2.5 },
-                { x: 0.1, y: 0.1, width: 0.8, height: 0.50, scale: 2.5 },
+                { x: 0.0, y: 0.08, width: 1.0, height: 0.35, scale: 3.2 },
+                { x: 0.15, y: 0.12, width: 0.70, height: 0.30, scale: 3.5 },
+                { x: 0.10, y: 0.15, width: 0.80, height: 0.38, scale: 2.8 },
             ]
         case 'generic_upi':
             return [
@@ -438,6 +454,24 @@ function getProviderAmountBands(provider: ProviderKind): ProviderCrop[] {
                 { x: 0.20, y: 0.22, width: 0.60, height: 0.12, scale: 7 },
                 { x: 0.18, y: 0.24, width: 0.64, height: 0.12, scale: 7 },
                 { x: 0.16, y: 0.26, width: 0.68, height: 0.12, scale: 7 },
+            ]
+        case 'phonepe':
+            return [
+                { x: 0.20, y: 0.10, width: 0.60, height: 0.08, scale: 5.5 },
+                { x: 0.18, y: 0.12, width: 0.64, height: 0.09, scale: 5.5 },
+                { x: 0.15, y: 0.14, width: 0.70, height: 0.10, scale: 6 },
+                { x: 0.12, y: 0.16, width: 0.76, height: 0.10, scale: 6 },
+                { x: 0.25, y: 0.18, width: 0.50, height: 0.09, scale: 7 },
+                { x: 0.22, y: 0.20, width: 0.56, height: 0.10, scale: 7 },
+            ]
+        case 'paytm':
+            return [
+                { x: 0.20, y: 0.12, width: 0.60, height: 0.08, scale: 5.5 },
+                { x: 0.18, y: 0.14, width: 0.64, height: 0.09, scale: 5.5 },
+                { x: 0.15, y: 0.16, width: 0.70, height: 0.10, scale: 6 },
+                { x: 0.12, y: 0.18, width: 0.76, height: 0.10, scale: 6 },
+                { x: 0.25, y: 0.20, width: 0.50, height: 0.09, scale: 7 },
+                { x: 0.22, y: 0.22, width: 0.56, height: 0.10, scale: 7 },
             ]
         default:
             return []

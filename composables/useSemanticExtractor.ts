@@ -36,7 +36,10 @@ function normalizeText(text: string) {
     return text
         .replace(/\r\n/g, '\n')
         .replace(/[|]/g, 'I')
-        .replace(/Ã¢â€šÂ¹|ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¹/g, '₹')
+        .replace(/Ã¢â€šÂ¹|ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¹|â‚¹/g, '₹')
+        .replace(/\b2(?=\s*\d{2,6}(?:[,\.]\d+)?(?:\s|$))/g, '₹')
+        .replace(/^2(?=\s*\d{2,6}(?:[,\.]\d+)?)/gm, '₹')
+        .replace(/(?<=\s)2(?=\s*\d{2,6}(?:[,\.]\d+)?)/g, '₹')
         .replace(/\bR(?=\s*\d)/g, '₹')
         .replace(/\bRS(?=\s*\d)/gi, 'Rs')
         .replace(/\b(?:rs|rs\.|inr)\b/gi, 'Rs')
@@ -187,14 +190,35 @@ function extractReceiver(text: string) {
     const directLine = lines.find(line => /^(paid to|sent to|to:|to )/i.test(line))
     if (directLine) return cleanEntity(directLine.replace(/^(paid to|sent to|to:|to )\s*/i, '')) || null
 
+    const namePattern = /^([A-Z][A-Za-z\s]{2,50})$/
+    for (const line of lines.slice(0, 10)) {
+        if (namePattern.test(line) && !/phonepe|paytm|google pay|transaction|payment|debited|upi|rupees/i.test(line)) {
+            return cleanEntity(line) || null
+        }
+    }
+
     const match = normalizeText(text).match(/(?:paid to|sent to|to)\s+([A-Za-z0-9\s&.'-]{2,60})/i)
     return match?.[1] ? cleanEntity(match[1]) : null
 }
 
 function extractSender(text: string) {
     const lines = getLines(text)
-    const directLine = lines.find(line => /^(from:|from )/i.test(line))
-    if (directLine) return cleanEntity(directLine.replace(/^(from:|from )\s*/i, '')) || null
+    
+    const standaloneIndex = lines.findIndex(line => /^(from:|from|received from)$/i.test(line))
+    if (standaloneIndex !== -1) {
+        const nextLine = lines[standaloneIndex + 1]
+        if (nextLine) return cleanEntity(nextLine) || null
+    }
+    
+    const directLine = lines.find(line => /^(from:|from |received from )/i.test(line))
+    if (directLine) return cleanEntity(directLine.replace(/^(from:|from |received from )\s*/i, '')) || null
+
+    const namePattern = /^([A-Z][A-Za-z\s]{2,50})$/
+    for (const line of lines.slice(0, 10)) {
+        if (namePattern.test(line) && !/phonepe|paytm|google pay|transaction|payment|credited|upi|rupees/i.test(line)) {
+            return cleanEntity(line) || null
+        }
+    }
 
     const match = normalizeText(text).match(/from\s+([A-Za-z0-9\s&.'-]{2,60})/i)
     return match?.[1] ? cleanEntity(match[1]) : null
@@ -203,7 +227,9 @@ function extractSender(text: string) {
 function extractTransactionId(text: string) {
     const patterns = [
         /(?:upi\s*ref(?:erence)?\s*(?:no|number)?|utr|rrn|txn\s*id|transaction\s*id|ref(?:erence)?\s*no|google transaction id)[:\s-]*([A-Za-z0-9_-]{8,30})/i,
-        /\b(\d{10,20})\b/,
+        /(?:upi\s*transaction\s*id)[:\s-]*([A-Za-z0-9]{10,30})/i,
+        /\b(R\d{12,20})\b/,
+        /\b(\d{12,20})\b/,
     ]
 
     for (const pattern of patterns) {
