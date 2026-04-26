@@ -203,6 +203,22 @@
         </div>
       </div>
 
+      <div v-if="blurryImage"
+           class="bg-amber-500/10 border border-amber-500/25 rounded-xl
+                  px-4 py-3 mb-4 flex items-start gap-3">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+             stroke="#f59e0b" stroke-width="2" class="mt-0.5 flex-shrink-0">
+          <circle cx="11" cy="11" r="8"/>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <div>
+          <p class="text-amber-400 text-sm font-medium mb-0.5">Blurry image detected</p>
+          <p class="text-amber-400/70 text-xs">
+            The image appears out of focus. OCR accuracy may be reduced — please verify all extracted fields.
+          </p>
+        </div>
+      </div>
+
       <div v-if="lowConfidence"
            class="bg-amber-500/10 border border-amber-500/25 rounded-xl
                   px-4 py-3 mb-4 flex items-start gap-3">
@@ -381,6 +397,7 @@ const authStore = useAuthStore()
 
 const lowConfidence = ref(false)
 const ocrConfidence = ref(0)
+const blurryImage = ref(false)
 
 type Step = 'capture' | 'processing' | 'review' | 'saved'
 const step = ref<Step>('capture')
@@ -561,17 +578,18 @@ async function handleFileUpload(e: Event) {
 }
 
 async function processImage(imageData: string) {
-  console.log('processImage called')
   step.value = 'processing'
   processingStep.value = 0
   camera.stopCamera()
 
-  console.log('Starting OCR...')
+  // Pre-OCR sharpness check
+  blurryImage.value = false
+  const sharpness = await ocr.getImageSharpness(imageData)
+  if (sharpness < 25) blurryImage.value = true
+
   const ocrResult = await ocr.recognize(imageData)
-  console.log('OCR result:', ocrResult)
 
   if (!ocrResult) {
-    console.error('OCR failed, going back to capture')
     step.value = 'capture'
     return
   }
@@ -592,24 +610,20 @@ async function processImage(imageData: string) {
     if (providerOcrResult?.text) {
       ocrText.value = [providerOcrResult.text, ocrText.value].filter(Boolean).join('\n')
       ocrConfidence.value = Math.max(ocrConfidence.value, providerOcrResult.confidence)
-      console.log('Provider-focused OCR text:', providerOcrResult.text)
     }
   }
 
-  console.log('Extracting fields from:', ocrText.value)
   const fields = extractor.extract(
     ocrText.value,
     documentResult.value?.kind ?? 'unknown',
     providerResult.value?.kind ?? 'unknown_provider'
   )
-  console.log('Extracted fields:', fields)
   processingStep.value = 4
-  
+
   semanticResult.value = await semanticExtractor.extract(ocrText.value, {
     documentKind: documentResult.value?.kind ?? 'unknown',
     provider: providerResult.value?.kind ?? 'unknown_provider',
   })
-  console.log('Semantic extraction:', semanticResult.value)
 
   const mergedFields = {
     transactionId: semanticResult.value.transaction_id || fields.transactionId || '',
@@ -624,7 +638,6 @@ async function processImage(imageData: string) {
   Object.assign(editableFields, mergedFields)
   processingStep.value = 5
 
-  console.log('Running NLP...')
   nlpResult.value = nlp.classify(ocrText.value, mergedFields.amount ?? 0)
   if (semanticResult.value?.direction && semanticResult.value.direction !== 'unknown') {
     nlpResult.value = {
@@ -633,7 +646,6 @@ async function processImage(imageData: string) {
       score: Math.max(nlpResult.value?.score ?? 0, 0.82),
     }
   }
-  console.log('NLP result:', nlpResult.value)
   processingStep.value = 6
 
   const userName = authStore.user?.displayName?.toLowerCase() || ''
@@ -643,21 +655,19 @@ async function processImage(imageData: string) {
     ownershipStatus.value = 'ambiguous'
   } else {
     const ocrTextLower = ocrText.value.toLowerCase()
-    
     if (ocrTextLower.includes(nameToMatch)) {
       ownershipStatus.value = 'matched'
     } else {
       const nameParts = nameToMatch.split(/\s+/).filter(p => p.length > 2)
-      if (nameParts.length > 0 && nameParts.every(part => ocrTextLower.includes(part))) {
-        ownershipStatus.value = 'matched'
-      } else {
-        ownershipStatus.value = 'ambiguous'
-      }
+      ownershipStatus.value = (nameParts.length > 0 && nameParts.every(part => ocrTextLower.includes(part)))
+        ? 'matched'
+        : 'ambiguous'
     }
   }
 
   step.value = 'review'
 }
+
 
 function resolveStatus() {
   switch (documentResult.value?.kind) {

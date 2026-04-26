@@ -1,370 +1,229 @@
-import type {
-    DocumentKind,
-    ProviderKind,
-    SemanticExtractionResult,
-} from '~/types/transaction'
+/**
+ * useSemanticExtractor.ts
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Semantic / AI-augmented field extraction for UPI receipts.
+ *
+ * Pipeline:
+ *   1. Normalise text via shared useOcrNormalizer
+ *   2. Run structural KV-pair parser (free, instant, high accuracy)
+ *   3. Apply rule-based NLP extractors for remaining fields
+ *   4. Optionally run Xenova/distilbert QA pipeline for any field still missing
+ *
+ * 100 % browser-compatible, zero new package dependencies.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
 
-const PROMPT_TEMPLATE = `You are a highly reliable information extraction system specialized in financial transaction data from UPI payment receipts.
+import type { DocumentKind, ProviderKind, SemanticExtractionResult } from '~/types/transaction'
+import {
+    normalizeOcrText,
+    normalizeOcrTextForAmount,
+    extractFromKeyValuePairs,
+    parseRupeeAmount,
+    normalizeDateString,
+} from '~/composables/useOcrNormalizer'
 
-You will be given OCR-extracted text from a receipt image. The text may be noisy, partially incorrect, or unstructured.
+// ─── Singleton AI pipeline ─────────────────────────────────────────────────
+let qaPipeline: any = null
+let qaPipelineFailed = false
 
-Your task is to interpret the text semantically (like a human reader) and extract the correct transaction details.`
+// ─── Internal utilities ────────────────────────────────────────────────────
 
-const MONTHS: Record<string, number> = {
-    jan: 1,
-    feb: 2,
-    mar: 3,
-    apr: 4,
-    may: 5,
-    jun: 6,
-    jul: 7,
-    aug: 8,
-    sep: 9,
-    oct: 10,
-    nov: 11,
-    dec: 12,
+function getLines(text: string): string[] {
+    return text.split('\n').map(l => l.trim()).filter(Boolean)
 }
 
-type AmountCandidate = {
-    value: number
-    raw: string
-    index: number
-    score: number
-}
-
-function normalizeText(text: string) {
-    return text
-        .replace(/\r\n/g, '\n')
-        .replace(/[|]/g, 'I')
-        .replace(/Ã¢â€šÂ¹|ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¹|â‚¹/g, '₹')
-        // Smart "2" to "₹" conversion - only for clearly misread rupee symbols
-        // Pattern 1: "2 " followed by 2-4 digits (e.g., "2 41" → "₹ 41")
-        .replace(/(?<!\d)\b2\s+(\d{2,4}(?:[,\.]\d+)?)\b/g, '₹ $1')
-        // Pattern 2: Line starts with "2" + 2-3 digits (e.g., "241" → "₹41")
-        .replace(/^2(\d{2,3})\b/gm, (match, digits) => {
-            const fullNum = parseInt('2' + digits, 10)
-            if (fullNum >= 2000 && fullNum <= 2099) return match // Year
-            if (fullNum > 2200) return match // Large number/ID
-            return `₹${digits}`
-        })
-        .replace(/\bR(?=\s*\d)/g, '₹')
-        .replace(/\bRS(?=\s*\d)/gi, 'Rs')
-        .replace(/\b(?:rs|rs\.|inr)\b/gi, 'Rs')
-        .replace(/(?<=\d)[oO](?=\d)/g, '0')
-        .replace(/[ \t]+/g, ' ')
-        .replace(/\n{2,}/g, '\n')
-        .trim()
-}
-
-function getLines(text: string) {
-    return normalizeText(text).split('\n').map(line => line.trim()).filter(Boolean)
-}
-
-function buildContext(text: string, index: number, radius = 28) {
+function buildContext(text: string, index: number, radius = 32): string {
     const left = Math.max(0, index - radius)
     const right = Math.min(text.length, index + radius)
     return text.slice(left, right).toLowerCase()
 }
 
-function parseAmount(raw: string) {
-    const cleaned = raw
-        .replace(/[₹,]/g, '')
-        .replace(/\b(?:rs|inr)\b/gi, '')
-        .replace(/(?<=\d)[oO](?=\d)/g, '0')
+function cleanEntity(value: string): string {
+    return value
+        .replace(/\s{2,}/g, ' ')
+        .replace(/\b(?:google pay|phonepe|paytm|gpay|g pay|upi|bank|ltd|pvt|limited)\b.*$/i, '')
+        .replace(/[₹₨]\s*\d+/g, '')
+        .replace(/\s+[₹₨]?\d+$/g, '')
+        .replace(/\+?\d{10,}/g, '')
+        .replace(/[|]/g, '')
         .trim()
-
-    const amount = Number.parseFloat(cleaned)
-    if (!Number.isFinite(amount) || amount <= 0 || amount > 200000) return null
-    return amount
 }
 
-function looksLikeDateToken(value: string) {
-    return /^(\d{1,2}[\/-]\d{1,2}(?:[\/-]\d{2,4})?|\d{4}[\/-]\d{1,2}[\/-]\d{1,2})$/.test(value)
-}
+// ─── Amount extraction ─────────────────────────────────────────────────────
 
-function looksLikeTimeToken(value: string) {
-    return /^\d{1,2}:\d{2}(?::\d{2})?(?:\s?[ap]m)?$/i.test(value)
-}
+const POSITIVE_CUES = [
+    'amount', 'paid', 'sent', 'received', 'completed', 'debited', 'credited',
+    'money received', 'you paid', 'payment', 'paid successfully', 'transaction successful',
+]
 
-function scoreAmountCandidate(text: string, raw: string, index: number) {
-    let score = 0
-    const context = buildContext(text, index)
+const NEGATIVE_CUES = [
+    'balance', 'cashback', 'reward', 'available balance', 'opening balance',
+    'closing balance', 'transaction id', 'upi transaction id', 'google transaction id',
+    'ref no', 'mobile', 'phone', 'utr', 'rrn',
+]
 
-    const positiveCues = [
-        'amount',
-        'paid',
-        'sent',
-        'received',
-        'completed',
-        'debited',
-        'credited',
-        'money received',
-        'you paid',
-        'payment',
-        'paid successfully',
-        'transaction successful',
-    ]
+// Lines that almost never contain the actual transaction amount
+const AMOUNT_SUPPRESS_RE = /\b(utr|rrn|ref(?:erence)?|transaction id|balance|account|mobile|phone)\b/i
 
-    const negativeCues = [
-        'balance',
-        'cashback',
-        'reward',
-        'available balance',
-        'opening balance',
-        'closing balance',
-        'transaction id',
-        'upi transaction id',
-        'google transaction id',
-        'ref no',
-        'mobile',
-        'phone',
-        'utr',
-    ]
-
-    for (const cue of positiveCues) {
-        if (context.includes(cue)) score += cue.includes(' ') ? 4 : 2
-    }
-
-    for (const cue of negativeCues) {
-        if (context.includes(cue)) score -= cue.includes(' ') ? 5 : 2
-    }
-
-    if (/₹|rs|inr/i.test(raw)) score += 12
-    if (/^\s*(?:₹|rs)?\s*[\d,]+(?:\.\d{1,2})?\s*$/i.test(raw)) score += 14
-    return score
-}
-
-function extractAmount(text: string) {
-    const normalized = normalizeText(text)
+function extractAmount(text: string): number | null {
+    const normalized = normalizeOcrTextForAmount(text)
     const lines = getLines(normalized)
-    const candidates: AmountCandidate[] = []
+
+    type Candidate = { value: number; raw: string; index: number; score: number }
+    const candidates: Candidate[] = []
     const seen = new Set<string>()
-    const amountRegex = /(?:₹|rs\.?|inr)?\s*(\d{1,6}(?:,\d{2,3})*(?:\.\d{1,2})?|\d{1,6}(?:\.\d{1,2})?)/gi
+    const amountRe = /(?:₹|rs\.?|inr)?[\s]*(\d{1,6}(?:,\d{2,3})*(?:\.\d{1,2})?|\d{1,6}(?:\.\d{1,2})?)/gi
 
-    for (const match of normalized.matchAll(amountRegex)) {
-        const raw = match[0]?.trim() ?? ''
+    for (const m of normalized.matchAll(amountRe)) {
+        const raw = m[0]?.trim() ?? ''
         if (!raw) continue
-        if (looksLikeDateToken(raw) || looksLikeTimeToken(raw)) continue
 
-        const value = parseAmount(raw)
+        const value = parseRupeeAmount(raw)
         if (value === null) continue
 
-        const key = `${value}-${Math.floor((match.index ?? 0) / 8)}`
+        // Suppress results on known non-amount lines
+        const lineIdx = lines.findIndex(l => l.includes(m[0]?.trim() ?? ''))
+        const lineText = lines[lineIdx] ?? ''
+        if (AMOUNT_SUPPRESS_RE.test(lineText)) continue
+
+        const key = `${value}-${Math.floor((m.index ?? 0) / 8)}`
         if (seen.has(key)) continue
         seen.add(key)
 
-        candidates.push({
-            value,
-            raw,
-            index: match.index ?? 0,
-            score: scoreAmountCandidate(normalized, raw, match.index ?? 0),
-        })
+        // Score the candidate
+        let score = 0
+        const ctx = buildContext(normalized, m.index ?? 0)
+        for (const cue of POSITIVE_CUES) if (ctx.includes(cue)) score += cue.includes(' ') ? 4 : 2
+        for (const cue of NEGATIVE_CUES) if (ctx.includes(cue)) score -= cue.includes(' ') ? 5 : 2
+        if (/₹|rs|inr/i.test(raw)) score += 12
+        if (/^\s*(?:₹|rs)?\s*[\d,]+(?:\.\d{1,2})?\s*$/i.test(raw)) score += 14
+
+        candidates.push({ value, raw, index: m.index ?? 0, score })
     }
 
-    for (const [lineIndex, line] of lines.slice(0, 10).entries()) {
-        const trimmed = line.trim()
-        // Prioritize standalone amount lines (just ₹XX format) - common in PhonePe
-        if (/^(?:₹|rs\.?|inr)\s*\d+(?:,\d{2,3})*(?:\.\d{1,2})?$/i.test(trimmed)) {
-            const match = trimmed.match(/(?:₹|rs\.?|inr)\s*[:\-]?\s*(\d{1,6}(?:,\d{2,3})*(?:\.\d{1,2})?)/i)
-            if (match?.[0]) {
-                const value = parseAmount(match[0])
+    // Explicit pass: standalone currency lines in top-10 get big boost
+    for (const [i, line] of lines.slice(0, 10).entries()) {
+        if (/^(?:₹|rs\.?|inr)\s*\d[\d,]*(?:\.\d{1,2})?$/i.test(line)) {
+            const m = line.match(/(?:₹|rs\.?|inr)\s*:?\s*([\d,]+(?:\.\d{1,2})?)/i)
+            if (m?.[1]) {
+                const value = parseRupeeAmount(m[1])
                 if (value !== null) {
-                    candidates.push({
-                        value,
-                        raw: match[0],
-                        index: normalized.indexOf(line),
-                        score: 40 - lineIndex, // Higher score for standalone amounts
-                    })
+                    candidates.push({ value, raw: m[1], index: normalized.indexOf(line), score: 40 - i })
                 }
             }
         } else {
-            // Regular amount extraction
-            const match = line.match(/(?:₹|rs\.?|inr)\s*[:\-]?\s*(\d{1,6}(?:,\d{2,3})*(?:\.\d{1,2})?)/i)
-            if (!match?.[0]) continue
-            const value = parseAmount(match[0])
-            if (value === null) continue
-            candidates.push({
-                value,
-                raw: match[0],
-                index: normalized.indexOf(line),
-                score: 32 - lineIndex,
-            })
+            const m = line.match(/(?:₹|rs\.?|inr)\s*:?\s*([\d,]+(?:\.\d{1,2})?)/i)
+            if (m?.[1]) {
+                const value = parseRupeeAmount(m[1])
+                if (value !== null)
+                    candidates.push({ value, raw: m[1], index: normalized.indexOf(line), score: 28 - i })
+            }
         }
     }
 
     return candidates.sort((a, b) => b.score - a.score)[0]?.value ?? null
 }
 
-function cleanEntity(value: string) {
-    return value
-        .replace(/\s{2,}/g, ' ')
-        .replace(/\b(?:google pay|phonepe|paytm)\b.*$/i, '')
-        .replace(/[|]/g, '')
-        .trim()
-}
+// ─── Receiver / sender extraction ─────────────────────────────────────────
 
-function extractReceiver(text: string) {
+function extractReceiver(text: string): string | null {
     const lines = getLines(text)
 
-    const standaloneIndex = lines.findIndex(line => /^(paid to|sent to|to:|to|transfer to)$/i.test(line))
-    if (standaloneIndex !== -1) {
-        const nextLine = lines[standaloneIndex + 1]
-        if (nextLine) return cleanEntity(nextLine) || null
+    // Standalone label → next line value
+    const sIdx = lines.findIndex(l => /^(paid to|sent to|to:|to|transfer to)$/i.test(l))
+    if (sIdx !== -1) {
+        const next = lines[sIdx + 1]
+        if (next) return cleanEntity(next) || null
     }
 
-    const directLine = lines.find(line => /^(paid to|sent to|to:|to )/i.test(line))
-    if (directLine) return cleanEntity(directLine.replace(/^(paid to|sent to|to:|to )\s*/i, '')) || null
+    // Inline "paid to XYZ"
+    const direct = lines.find(l => /^(paid to|sent to|to:|to )/i.test(l))
+    if (direct) return cleanEntity(direct.replace(/^(paid to|sent to|to:|to )\s*/i, '')) || null
 
-    const namePattern = /^([A-Z][A-Za-z\s]{2,50})$/
+    // Capitalized proper name in first 10 lines
+    const nameRe = /^([A-Z][A-Za-z\s]{2,50})$/
     for (const line of lines.slice(0, 10)) {
-        if (namePattern.test(line) && !/phonepe|paytm|google pay|transaction|payment|debited|upi|rupees/i.test(line)) {
+        if (nameRe.test(line) && !/phonepe|paytm|google pay|transaction|payment|debited|upi|rupees/i.test(line))
             return cleanEntity(line) || null
-        }
     }
 
-    const match = normalizeText(text).match(/(?:paid to|sent to|to)\s+([A-Za-z0-9\s&.'-]{2,60})/i)
-    return match?.[1] ? cleanEntity(match[1]) : null
+    const m = text.match(/(?:paid to|sent to|to)\s+([A-Za-z0-9\s&.'\-]{2,60})/i)
+    return m?.[1] ? cleanEntity(m[1]) : null
 }
 
-function extractSender(text: string) {
+function extractSender(text: string): string | null {
     const lines = getLines(text)
-    
-    const standaloneIndex = lines.findIndex(line => /^(from:|from|received from)$/i.test(line))
-    if (standaloneIndex !== -1) {
-        const nextLine = lines[standaloneIndex + 1]
-        if (nextLine) return cleanEntity(nextLine) || null
-    }
-    
-    const directLine = lines.find(line => /^(from:|from |received from )/i.test(line))
-    if (directLine) return cleanEntity(directLine.replace(/^(from:|from |received from )\s*/i, '')) || null
 
-    const namePattern = /^([A-Z][A-Za-z\s]{2,50})$/
+    const sIdx = lines.findIndex(l => /^(from:|from|received from)$/i.test(l))
+    if (sIdx !== -1) {
+        const next = lines[sIdx + 1]
+        if (next) return cleanEntity(next) || null
+    }
+
+    const direct = lines.find(l => /^(from:|from |received from )/i.test(l))
+    if (direct) return cleanEntity(direct.replace(/^(from:|from |received from )\s*/i, '')) || null
+
+    const nameRe = /^([A-Z][A-Za-z\s]{2,50})$/
     for (const line of lines.slice(0, 10)) {
-        if (namePattern.test(line) && !/phonepe|paytm|google pay|transaction|payment|credited|upi|rupees/i.test(line)) {
+        if (nameRe.test(line) && !/phonepe|paytm|google pay|transaction|payment|credited|upi|rupees/i.test(line))
             return cleanEntity(line) || null
-        }
     }
 
-    const match = normalizeText(text).match(/from\s+([A-Za-z0-9\s&.'-]{2,60})/i)
-    return match?.[1] ? cleanEntity(match[1]) : null
+    const m = text.match(/from\s+([A-Za-z0-9\s&.'\-]{2,60})/i)
+    return m?.[1] ? cleanEntity(m[1]) : null
 }
 
-function extractTransactionId(text: string) {
+// ─── Transaction ID extraction ─────────────────────────────────────────────
+
+function extractTransactionId(text: string): string | null {
     const patterns = [
-        /(?:upi\s*ref(?:erence)?\s*(?:no|number)?|utr|rrn|txn\s*id|transaction\s*id|ref(?:erence)?\s*no|google transaction id)[:\s-]*([A-Za-z0-9_-]{8,30})/i,
-        /(?:upi\s*transaction\s*id)[:\s-]*([A-Za-z0-9]{10,30})/i,
+        /(?:upi\s*ref(?:erence)?\s*(?:no|number)?|utr|rrn|txn\s*id|transaction\s*id|ref(?:erence)?\s*no|google transaction id)\s*:?\s*([A-Za-z0-9_\-]{8,30})/i,
+        /(?:upi\s*transaction\s*id)\s*:?\s*([A-Za-z0-9]{10,30})/i,
         /\b(R\d{12,20})\b/,
+        /\b(T\d{23})\b/,
         /\b(\d{12,20})\b/,
     ]
-
-    for (const pattern of patterns) {
-        const match = normalizeText(text).match(pattern)
-        if (match?.[1]) return match[1]
+    for (const re of patterns) {
+        const m = text.match(re)
+        if (m?.[1]) return m[1]
     }
-
     return null
 }
 
-function normalizeDate(raw: string | null) {
-    if (!raw) return null
+// ─── Date extraction ───────────────────────────────────────────────────────
 
-    const compact = raw.replace(/,/g, '').trim()
-    
-    // Handle "13 Feb 2026" or "13 February 2026"
-    const monthName = compact.match(/(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{2,4})/i)
-    if (monthName) {
-        const day = Number.parseInt(monthName[1] ?? '', 10)
-        const month = MONTHS[(monthName[2] ?? '').slice(0, 3).toLowerCase()]
-        const year = Number.parseInt(monthName[3] ?? '', 10)
-        if (day && month && year) {
-            const fullYear = year < 100 ? 2000 + year : year
-            return `${fullYear.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`
-        }
-    }
+function extractDate(text: string): string | null {
+    // Strategy 1: "08:07 am on 28 Feb 2026"
+    const m1 = text.match(/([\d]{1,2}:[\d]{2}\s*(?:am|pm))\s+on\s+(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})/i)
+    if (m1?.[2]) return normalizeDateString(m1[2])
 
-    // Handle "DD/MM/YYYY" or "DD-MM-YYYY" or "DD/MM/YY" or "DD.MM.YYYY"
-    const slashDate = compact.match(/(\d{1,2})[\/.]\d{1,2}[\/.]\d{2,4}/)
-    if (slashDate) {
-        const parts = compact.split(/[\/.]/);
-        const day = Number.parseInt(parts[0] ?? '', 10)
-        const month = Number.parseInt(parts[1] ?? '', 10)
-        const year = Number.parseInt(parts[2] ?? '', 10)
-        const fullYear = year < 100 ? 2000 + year : year
-        if (day && month && fullYear) {
-            return `${fullYear.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`
-        }
-    }
+    // Strategy 2: "12:48 AM, 13 Feb 2026"
+    const m2 = text.match(/([\d]{1,2}:[\d]{2}(?::[\d]{2})?\s*(?:am|pm)?)[,\s]+(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[,\s]+\d{2,4})/i)
+    if (m2?.[2]) return normalizeDateString(m2[2])
 
-    // Handle "YYYY-MM-DD" (ISO format)
-    const isoDate = compact.match(/(\d{4})-(\d{2})-(\d{2})/)
-    if (isoDate) return isoDate[0]
-    
-    return raw
-}
+    // Strategy 3: Date only "13 Feb 2026"
+    const m3 = text.match(/\b(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})\b/i)
+    if (m3?.[0]) return normalizeDateString(m3[0])
 
-function extractDate(text: string) {
-    const normalized = normalizeText(text)
-    const lines = getLines(normalized)
-    
-    console.log('[Semantic Date] Starting semantic date extraction...')
-    console.log('[Semantic Date] First 20 lines:', lines.slice(0, 20))
-    
-    // Strategy 1: PhonePe format - "08:07 am on 28 Feb 2026"
-    const dateTimeOnPattern = /(\d{1,2}:\d{2}\s*(?:am|pm))\s+on\s+(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})/i
-    const dateTimeOnMatch = normalized.match(dateTimeOnPattern)
-    if (dateTimeOnMatch?.[2]) {
-        console.log('[Semantic Date] Found PhonePe format:', dateTimeOnMatch[2])
-        return normalizeDate(dateTimeOnMatch[2])
-    }
-    
-    // Strategy 2: Paytm format - "12:48 AM, 13 Feb 2026"
-    const dateTimePattern = /(\d{1,2}:\d{2}(?::\d{2})?\s*(?:am|pm|AM|PM)?)[,\s]+(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[,\s]+\d{2,4})/i
-    const dateTimeMatch = normalized.match(dateTimePattern)
-    if (dateTimeMatch?.[2]) {
-        console.log('[Semantic Date] Found Paytm format:', dateTimeMatch[2])
-        return normalizeDate(dateTimeMatch[2])
-    }
-    
-    // Strategy 3: Date only - "13 Feb 2026"
-    const dateOnlyPattern = /\b(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})\b/i
-    const dateOnlyMatch = normalized.match(dateOnlyPattern)
-    if (dateOnlyMatch?.[0]) {
-        console.log('[Semantic Date] Found date only format:', dateOnlyMatch[0])
-        return normalizeDate(dateOnlyMatch[0])
-    }
-    
-    // Strategy 4: Try patterns in order of specificity
-    const patterns = [
+    // Strategy 4: Top-20 lines then full text
+    const lines = getLines(text)
+    const top = lines.slice(0, 20).join('\n')
+    for (const re of [
         /(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[,\s]+\d{2,4})/i,
-        /(\d{1,2}[\/.]\d{1,2}[\/.]\d{2,4})/,
-        /(\d{4}[\/-]\d{2}[\/-]\d{2})/,
-    ]
-
-    // First try to find date in top 20 lines (where dates usually appear)
-    const topText = lines.slice(0, 20).join('\n')
-    for (const pattern of patterns) {
-        const match = topText.match(pattern)
-        if (match?.[1]) {
-            console.log('[Semantic Date] Found in top 20 lines:', match[1])
-            return normalizeDate(match[1])
-        }
-    }
-    
-    // Then try full text
-    for (const pattern of patterns) {
-        const match = normalized.match(pattern)
-        if (match?.[1]) {
-            console.log('[Semantic Date] Found in full text:', match[1])
-            return normalizeDate(match[1])
-        }
+        /(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})/,
+        /(\d{4}[\/\-]\d{2}[\/\-]\d{2})/,
+    ]) {
+        const m = top.match(re) ?? text.match(re)
+        if (m?.[1]) return normalizeDateString(m[1])
     }
 
-    console.log('[Semantic Date] No date found')
     return null
 }
+
+// ─── Presence detectors ────────────────────────────────────────────────────
 
 function detectStatus(text: string, kind?: DocumentKind): 'completed' | 'failed' | 'pending' | null {
-    const lower = normalizeText(text).toLowerCase()
+    const lower = text.toLowerCase()
     if (kind === 'upi_receipt_failed' || /failed|declined|unsuccessful/.test(lower)) return 'failed'
     if (kind === 'upi_receipt_pending' || /pending|processing|awaiting/.test(lower)) return 'pending'
     if (/completed|successful|success|paid successfully/.test(lower)) return 'completed'
@@ -372,49 +231,32 @@ function detectStatus(text: string, kind?: DocumentKind): 'completed' | 'failed'
 }
 
 function detectDirection(text: string, kind?: DocumentKind): 'sent' | 'received' | 'unknown' | null {
-    const lower = normalizeText(text).toLowerCase()
+    const lower = text.toLowerCase()
     if (kind === 'upi_receipt_failed' || kind === 'upi_receipt_pending') return 'unknown'
 
-    const sentPhrases = [
-        'paid to',
-        'sent to',
-        'debited from',
-        'you paid',
-        'paid successfully',
-        'transaction successful',
-        'transfer to',
-    ]
+    const sent = ['paid to', 'sent to', 'debited from', 'you paid', 'paid successfully', 'transaction successful', 'transfer to']
+    const recv = ['received from', 'money received', 'credited to', 'credited in', 'you received', 'collected from']
 
-    const receivedPhrases = [
-        'received from',
-        'money received',
-        'credited to',
-        'credited in',
-        'you received',
-        'collected from',
-    ]
+    let s = sent.filter(p => lower.includes(p)).length
+    let r = recv.filter(p => lower.includes(p)).length
 
-    let sentScore = sentPhrases.filter(phrase => lower.includes(phrase)).length
-    let receivedScore = receivedPhrases.filter(phrase => lower.includes(phrase)).length
+    if (/(^|\n)\s*to\s*:/.test(lower) && /(^|\n)\s*from\s*:/.test(lower)) s += 3
+    if (/(^|\n)\s*paid to\b/.test(lower)) s += 4
+    if (/(^|\n)\s*received from\b/.test(lower)) r += 4
+    if (/(^|\n)\s*money received\b/.test(lower)) r += 5
 
-    if (/(^|\n)\s*to\s*:/.test(lower) && /(^|\n)\s*from\s*:/.test(lower)) sentScore += 3
-    if (/(^|\n)\s*paid to\b/.test(lower)) sentScore += 4
-    if (/(^|\n)\s*received from\b/.test(lower)) receivedScore += 4
-    if (/(^|\n)\s*money received\b/.test(lower)) receivedScore += 5
-
-    if (sentScore > receivedScore) return 'sent'
-    if (receivedScore > sentScore) return 'received'
-    return sentScore || receivedScore ? 'unknown' : null
+    if (s > r) return 'sent'
+    if (r > s) return 'received'
+    return s || r ? 'unknown' : null
 }
 
-function detectCurrency(text: string) {
-    return /₹|rs|inr/i.test(normalizeText(text)) ? 'INR' : null
+function detectCurrency(text: string): string | null {
+    return /₹|rs|inr/i.test(text) ? 'INR' : null
 }
 
 function detectProvider(text: string, provider?: ProviderKind): ProviderKind | null {
     if (provider && provider !== 'unknown_provider') return provider
-
-    const lower = normalizeText(text).toLowerCase()
+    const lower = text.toLowerCase()
     if (lower.includes('google pay') || lower.includes('g pay')) return 'gpay'
     if (lower.includes('phonepe')) return 'phonepe'
     if (lower.includes('paytm')) return 'paytm'
@@ -422,65 +264,84 @@ function detectProvider(text: string, provider?: ProviderKind): ProviderKind | n
     return null
 }
 
-let qaPipeline: any = null
-let qaPipelineFailed = false
+// ─── Public composable ─────────────────────────────────────────────────────
 
 export function useSemanticExtractor() {
-    function buildPrompt(ocrText: string) {
-        return `${PROMPT_TEMPLATE}\n\nINPUT\n${ocrText}`
+    function buildPrompt(ocrText: string): string {
+        return `You are a highly reliable information extraction system specialized in financial transaction data from UPI payment receipts.\n\nYou will be given OCR-extracted text from a receipt image. The text may be noisy, partially incorrect, or unstructured.\n\nYour task is to interpret the text semantically (like a human reader) and extract the correct transaction details.\n\nINPUT\n${ocrText}`
     }
 
     async function extract(
         ocrText: string,
         options?: { provider?: ProviderKind; documentKind?: DocumentKind }
     ): Promise<SemanticExtractionResult> {
-        const normalized = normalizeText(ocrText)
+        const normalized = normalizeOcrText(ocrText)
 
-        let aiAmount = extractAmount(normalized)
-        let aiReceiver = extractReceiver(normalized)
+        // ── 1. Structural KV parse (instant, high accuracy)
+        const kv = extractFromKeyValuePairs(getLines(normalized))
 
+        // ── 2. Rule-based NLP  
+        let aiAmount:    number | null  = kv.amount ? parseRupeeAmount(kv.amount) : extractAmount(normalized)
+        
+        let aiReceiver: string | null = kv.merchantName ? cleanEntity(kv.merchantName) : null
+        if (!aiReceiver) aiReceiver = extractReceiver(normalized)
+
+        let aiSender: string | null = kv.note ? cleanEntity(kv.note) : null
+        if (!aiSender) aiSender = extractSender(normalized)
+
+        let aiTxnId:     string | null  = kv.transactionId ?? kv.utr ?? kv.rrn ?? extractTransactionId(normalized)
+        let aiDate:      string | null  = kv.date ? normalizeDateString(kv.date) : extractDate(normalized)
+
+        // ── 3. Xenova QA pipeline for any field still missing
         try {
-            if (!qaPipeline && typeof window !== 'undefined' && !qaPipelineFailed && (!aiAmount || !aiReceiver)) {
-                const transformers = await import('@xenova/transformers')
-                transformers.env.allowLocalModels = false
-                transformers.env.useBrowserCache = true
-                transformers.env.backends.onnx.wasm.numThreads = 1
-                transformers.env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.14.0/dist/'
-                qaPipeline = await transformers.pipeline('question-answering', 'Xenova/distilbert-base-uncased-distilled-squad')
+            const needsAI = !aiAmount || !aiReceiver
+            if (needsAI && !qaPipeline && typeof window !== 'undefined' && !qaPipelineFailed) {
+                const t = await import('@xenova/transformers')
+                t.env.allowLocalModels = false
+                t.env.useBrowserCache = true
+                t.env.backends.onnx.wasm.numThreads = 1
+                t.env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.14.0/dist/'
+                qaPipeline = await t.pipeline('question-answering', 'Xenova/distilbert-base-uncased-distilled-squad')
             }
 
             if (qaPipeline) {
                 if (!aiAmount) {
-                    const amountAns = await qaPipeline('What is the main transaction amount?', normalized)
-                    if (amountAns && amountAns.score > 0.3) {
-                        const cleanedAmount = parseAmount(amountAns.answer)
-                        if (cleanedAmount) aiAmount = cleanedAmount
+                    const ans = await qaPipeline('What is the main transaction amount paid or received?', normalized)
+                    if (ans?.score > 0.25) {
+                        const v = parseRupeeAmount(ans.answer)
+                        if (v) aiAmount = v
                     }
                 }
-
                 if (!aiReceiver) {
-                    const receiverAns = await qaPipeline('Who received the money?', normalized)
-                    if (receiverAns && receiverAns.score > 0.3) {
-                        const cleanedReceiver = cleanEntity(receiverAns.answer)
-                        if (cleanedReceiver && cleanedReceiver.length > 2) aiReceiver = cleanedReceiver
+                    const ans = await qaPipeline('Who received the payment or who was paid?', normalized)
+                    if (ans?.score > 0.25) {
+                        const cleaned = cleanEntity(ans.answer)
+                        if (cleaned && cleaned.length > 2) aiReceiver = cleaned
+                    }
+                }
+                if (!aiDate) {
+                    const ans = await qaPipeline('What is the date of the transaction?', normalized)
+                    if (ans?.score > 0.3) {
+                        const d = normalizeDateString(ans.answer)
+                        if (d) aiDate = d
                     }
                 }
             }
         } catch (e: any) {
             qaPipelineFailed = true
-            console.warn(`[Local AI] Transformer QA model unavailable in this environment: ${e.message}`)
+            console.warn(`[SemanticExtractor] Transformer QA unavailable: ${e.message}`)
         }
 
         return {
-            amount: aiAmount,
-            currency: detectCurrency(normalized),
-            receiver: aiReceiver,
-            sender: extractSender(normalized),
-            transaction_id: extractTransactionId(normalized),
-            date: extractDate(normalized),
-            status: detectStatus(normalized, options?.documentKind),
-            provider: detectProvider(normalized, options?.provider),
-            direction: detectDirection(normalized, options?.documentKind),
+            amount:         aiAmount,
+            currency:       detectCurrency(normalized),
+            receiver:       aiReceiver,
+            sender:         aiSender,
+            transaction_id: aiTxnId,
+            date:           aiDate,
+            status:         detectStatus(normalized, options?.documentKind),
+            provider:       detectProvider(normalized, options?.provider),
+            direction:      detectDirection(normalized, options?.documentKind),
         }
     }
 
