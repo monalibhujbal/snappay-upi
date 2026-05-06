@@ -36,7 +36,17 @@ function normalizeText(text: string) {
     return text
         .replace(/\r\n/g, '\n')
         .replace(/[|]/g, 'I')
-        .replace(/Ã¢â€šÂ¹|ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¹/g, '₹')
+        .replace(/Ã¢â€šÂ¹|ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¹|â‚¹/g, '₹')
+        // Smart "2" to "₹" conversion - only for clearly misread rupee symbols
+        // Pattern 1: "2 " followed by 2-4 digits (e.g., "2 41" → "₹ 41")
+        .replace(/(?<!\d)\b2\s+(\d{2,4}(?:[,\.]\d+)?)\b/g, '₹ $1')
+        // Pattern 2: Line starts with "2" + 2-3 digits (e.g., "241" → "₹41")
+        .replace(/^2(\d{2,3})\b/gm, (match, digits) => {
+            const fullNum = parseInt('2' + digits, 10)
+            if (fullNum >= 2000 && fullNum <= 2099) return match // Year
+            if (fullNum > 2200) return match // Large number/ID
+            return `₹${digits}`
+        })
         .replace(/\bR(?=\s*\d)/g, '₹')
         .replace(/\bRS(?=\s*\d)/gi, 'Rs')
         .replace(/\b(?:rs|rs\.|inr)\b/gi, 'Rs')
@@ -151,17 +161,35 @@ function extractAmount(text: string) {
         })
     }
 
-    for (const [lineIndex, line] of lines.slice(0, 8).entries()) {
-        const match = line.match(/(?:₹|rs\.?|inr)\s*[:\-]?\s*(\d{1,6}(?:,\d{2,3})*(?:\.\d{1,2})?)/i)
-        if (!match?.[0]) continue
-        const value = parseAmount(match[0])
-        if (value === null) continue
-        candidates.push({
-            value,
-            raw: match[0],
-            index: normalized.indexOf(line),
-            score: 32 - lineIndex,
-        })
+    for (const [lineIndex, line] of lines.slice(0, 10).entries()) {
+        const trimmed = line.trim()
+        // Prioritize standalone amount lines (just ₹XX format) - common in PhonePe
+        if (/^(?:₹|rs\.?|inr)\s*\d+(?:,\d{2,3})*(?:\.\d{1,2})?$/i.test(trimmed)) {
+            const match = trimmed.match(/(?:₹|rs\.?|inr)\s*[:\-]?\s*(\d{1,6}(?:,\d{2,3})*(?:\.\d{1,2})?)/i)
+            if (match?.[0]) {
+                const value = parseAmount(match[0])
+                if (value !== null) {
+                    candidates.push({
+                        value,
+                        raw: match[0],
+                        index: normalized.indexOf(line),
+                        score: 40 - lineIndex, // Higher score for standalone amounts
+                    })
+                }
+            }
+        } else {
+            // Regular amount extraction
+            const match = line.match(/(?:₹|rs\.?|inr)\s*[:\-]?\s*(\d{1,6}(?:,\d{2,3})*(?:\.\d{1,2})?)/i)
+            if (!match?.[0]) continue
+            const value = parseAmount(match[0])
+            if (value === null) continue
+            candidates.push({
+                value,
+                raw: match[0],
+                index: normalized.indexOf(line),
+                score: 32 - lineIndex,
+            })
+        }
     }
 
     return candidates.sort((a, b) => b.score - a.score)[0]?.value ?? null
@@ -187,14 +215,35 @@ function extractReceiver(text: string) {
     const directLine = lines.find(line => /^(paid to|sent to|to:|to )/i.test(line))
     if (directLine) return cleanEntity(directLine.replace(/^(paid to|sent to|to:|to )\s*/i, '')) || null
 
+    const namePattern = /^([A-Z][A-Za-z\s]{2,50})$/
+    for (const line of lines.slice(0, 10)) {
+        if (namePattern.test(line) && !/phonepe|paytm|google pay|transaction|payment|debited|upi|rupees/i.test(line)) {
+            return cleanEntity(line) || null
+        }
+    }
+
     const match = normalizeText(text).match(/(?:paid to|sent to|to)\s+([A-Za-z0-9\s&.'-]{2,60})/i)
     return match?.[1] ? cleanEntity(match[1]) : null
 }
 
 function extractSender(text: string) {
     const lines = getLines(text)
-    const directLine = lines.find(line => /^(from:|from )/i.test(line))
-    if (directLine) return cleanEntity(directLine.replace(/^(from:|from )\s*/i, '')) || null
+    
+    const standaloneIndex = lines.findIndex(line => /^(from:|from|received from)$/i.test(line))
+    if (standaloneIndex !== -1) {
+        const nextLine = lines[standaloneIndex + 1]
+        if (nextLine) return cleanEntity(nextLine) || null
+    }
+    
+    const directLine = lines.find(line => /^(from:|from |received from )/i.test(line))
+    if (directLine) return cleanEntity(directLine.replace(/^(from:|from |received from )\s*/i, '')) || null
+
+    const namePattern = /^([A-Z][A-Za-z\s]{2,50})$/
+    for (const line of lines.slice(0, 10)) {
+        if (namePattern.test(line) && !/phonepe|paytm|google pay|transaction|payment|credited|upi|rupees/i.test(line)) {
+            return cleanEntity(line) || null
+        }
+    }
 
     const match = normalizeText(text).match(/from\s+([A-Za-z0-9\s&.'-]{2,60})/i)
     return match?.[1] ? cleanEntity(match[1]) : null
@@ -203,7 +252,9 @@ function extractSender(text: string) {
 function extractTransactionId(text: string) {
     const patterns = [
         /(?:upi\s*ref(?:erence)?\s*(?:no|number)?|utr|rrn|txn\s*id|transaction\s*id|ref(?:erence)?\s*no|google transaction id)[:\s-]*([A-Za-z0-9_-]{8,30})/i,
-        /\b(\d{10,20})\b/,
+        /(?:upi\s*transaction\s*id)[:\s-]*([A-Za-z0-9]{10,30})/i,
+        /\b(R\d{12,20})\b/,
+        /\b(\d{12,20})\b/,
     ]
 
     for (const pattern of patterns) {
@@ -218,6 +269,8 @@ function normalizeDate(raw: string | null) {
     if (!raw) return null
 
     const compact = raw.replace(/,/g, '').trim()
+    
+    // Handle "13 Feb 2026" or "13 February 2026"
     const monthName = compact.match(/(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{2,4})/i)
     if (monthName) {
         const day = Number.parseInt(monthName[1] ?? '', 10)
@@ -229,35 +282,84 @@ function normalizeDate(raw: string | null) {
         }
     }
 
-    const slashDate = compact.match(/(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})/)
+    // Handle "DD/MM/YYYY" or "DD-MM-YYYY" or "DD/MM/YY" or "DD.MM.YYYY"
+    const slashDate = compact.match(/(\d{1,2})[\/.]\d{1,2}[\/.]\d{2,4}/)
     if (slashDate) {
-        const day = Number.parseInt(slashDate[1] ?? '', 10)
-        const month = Number.parseInt(slashDate[2] ?? '', 10)
-        const year = Number.parseInt(slashDate[3] ?? '', 10)
+        const parts = compact.split(/[\/.]/);
+        const day = Number.parseInt(parts[0] ?? '', 10)
+        const month = Number.parseInt(parts[1] ?? '', 10)
+        const year = Number.parseInt(parts[2] ?? '', 10)
         const fullYear = year < 100 ? 2000 + year : year
         if (day && month && fullYear) {
             return `${fullYear.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`
         }
     }
 
+    // Handle "YYYY-MM-DD" (ISO format)
     const isoDate = compact.match(/(\d{4})-(\d{2})-(\d{2})/)
     if (isoDate) return isoDate[0]
+    
     return raw
 }
 
 function extractDate(text: string) {
     const normalized = normalizeText(text)
+    const lines = getLines(normalized)
+    
+    console.log('[Semantic Date] Starting semantic date extraction...')
+    console.log('[Semantic Date] First 20 lines:', lines.slice(0, 20))
+    
+    // Strategy 1: PhonePe format - "08:07 am on 28 Feb 2026"
+    const dateTimeOnPattern = /(\d{1,2}:\d{2}\s*(?:am|pm))\s+on\s+(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4})/i
+    const dateTimeOnMatch = normalized.match(dateTimeOnPattern)
+    if (dateTimeOnMatch?.[2]) {
+        console.log('[Semantic Date] Found PhonePe format:', dateTimeOnMatch[2])
+        return normalizeDate(dateTimeOnMatch[2])
+    }
+    
+    // Strategy 2: Paytm format - "12:48 AM, 13 Feb 2026"
+    const dateTimePattern = /(\d{1,2}:\d{2}(?::\d{2})?\s*(?:am|pm|AM|PM)?)[,\s]+(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[,\s]+\d{2,4})/i
+    const dateTimeMatch = normalized.match(dateTimePattern)
+    if (dateTimeMatch?.[2]) {
+        console.log('[Semantic Date] Found Paytm format:', dateTimeMatch[2])
+        return normalizeDate(dateTimeMatch[2])
+    }
+    
+    // Strategy 3: Date only - "13 Feb 2026"
+    const dateOnlyPattern = /\b(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})\b/i
+    const dateOnlyMatch = normalized.match(dateOnlyPattern)
+    if (dateOnlyMatch?.[0]) {
+        console.log('[Semantic Date] Found date only format:', dateOnlyMatch[0])
+        return normalizeDate(dateOnlyMatch[0])
+    }
+    
+    // Strategy 4: Try patterns in order of specificity
     const patterns = [
-        /(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{2,4})/i,
-        /(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})/,
-        /(\d{4}-\d{2}-\d{2})/,
+        /(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[,\s]+\d{2,4})/i,
+        /(\d{1,2}[\/.]\d{1,2}[\/.]\d{2,4})/,
+        /(\d{4}[\/-]\d{2}[\/-]\d{2})/,
     ]
 
+    // First try to find date in top 20 lines (where dates usually appear)
+    const topText = lines.slice(0, 20).join('\n')
+    for (const pattern of patterns) {
+        const match = topText.match(pattern)
+        if (match?.[1]) {
+            console.log('[Semantic Date] Found in top 20 lines:', match[1])
+            return normalizeDate(match[1])
+        }
+    }
+    
+    // Then try full text
     for (const pattern of patterns) {
         const match = normalized.match(pattern)
-        if (match?.[1]) return normalizeDate(match[1])
+        if (match?.[1]) {
+            console.log('[Semantic Date] Found in full text:', match[1])
+            return normalizeDate(match[1])
+        }
     }
 
+    console.log('[Semantic Date] No date found')
     return null
 }
 

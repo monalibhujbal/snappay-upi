@@ -38,7 +38,7 @@
       </NuxtLink>
     </nav>
 
-    <ToastContainer />
+    <UiToastContainer />
   </div>
 </template>
 
