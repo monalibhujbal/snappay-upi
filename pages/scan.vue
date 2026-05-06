@@ -275,6 +275,7 @@
         </div>
       </div>
 
+      <!-- ── Verify Ownership card ─────────────────────────────────── -->
       <div v-if="ownershipStatus !== 'matched'"
            class="bg-rose-500/10 border border-rose-500/25 rounded-xl
                   px-4 py-4 mb-4 flex flex-col gap-3">
@@ -288,25 +289,143 @@
           <div>
             <p class="text-rose-400 text-sm font-medium mb-1">Verify Ownership</p>
             <p class="text-rose-400/80 text-xs">
-              We could not verify that this receipt belongs to you. Please confirm it manually.
+              We could not verify that this receipt belongs to you.
+              Upload your bank statement as a PDF to verify automatically.
             </p>
           </div>
         </div>
 
-        <label class="flex items-center gap-2 mt-1 cursor-pointer">
-          <input type="checkbox" v-model="hasConfirmedOwnership" 
+        <!-- Manual confirm checkbox (fallback) -->
+        <label class="flex items-center gap-2 cursor-pointer select-none">
+          <input type="checkbox" v-model="hasConfirmedOwnership"
+                 :disabled="statementVerified"
                  class="w-4 h-4 rounded border-slate-600 bg-surface-card text-brand-500
                         focus:ring-brand-500/30" />
-          <span class="text-sm text-ink-primary">I confirm this is my personal receipt</span>
+          <span class="text-sm"
+                :class="statementVerified ? 'text-ink-muted line-through' : 'text-ink-primary'">
+            I confirm this is my personal receipt
+          </span>
         </label>
 
-        <div class="mt-2 pt-3 border-t border-rose-500/20">
-          <label class="text-xs text-rose-400 mb-1 block">Upload matching bank statement (Optional)</label>
-          <input type="file" accept="image/*,.pdf" 
-                 @change="e => statementFile = (e.target as HTMLInputElement).files?.[0] || null" 
-                 class="text-xs text-ink-muted file:mr-4 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-surface-card file:text-ink-primary hover:file:bg-surface-elevated" />
+        <!-- Bank statement upload + verify -->
+        <div class="mt-1 pt-3 border-t border-rose-500/20 space-y-3">
+          <p class="text-xs text-rose-400 font-medium">Verify via Bank Statement (PDF)</p>
+
+          <!-- Upload row -->
+          <div class="flex items-center gap-3">
+            <label class="flex-1 cursor-pointer">
+              <div class="flex items-center gap-2 px-3 py-2 rounded-xl
+                          bg-surface-card border border-slate-700/60
+                          hover:border-rose-400/40 transition-colors">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" class="text-rose-400 flex-shrink-0">
+                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="12" y1="18" x2="12" y2="12"/>
+                  <line x1="9" y1="15" x2="15" y2="15"/>
+                </svg>
+                <span class="text-xs text-ink-muted flex-1 truncate">
+                  {{ statementFile ? statementFile.name : 'Choose bank statement PDF…' }}
+                </span>
+              </div>
+              <input type="file" accept=".pdf"
+                     @change="handleStatementFileChange"
+                     class="hidden" />
+            </label>
+
+            <!-- Verify button -->
+            <button
+              v-if="statementFile && !statementVerified"
+              :disabled="verifier.isVerifying.value"
+              @click="verifyBankStatement"
+              class="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl
+                     bg-rose-500/20 border border-rose-500/40 text-rose-300
+                     text-xs font-semibold hover:bg-rose-500/30 transition-colors
+                     disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg v-if="verifier.isVerifying.value"
+                   class="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="currentColor"
+                        stroke-width="2" stroke-dasharray="32" stroke-dashoffset="12"/>
+              </svg>
+              <svg v-else width="13" height="13" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2">
+                <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/>
+                <polyline points="22 4 12 14.01 9 11.01"/>
+              </svg>
+              {{ verifier.isVerifying.value ? 'Verifying…' : 'Verify' }}
+            </button>
+          </div>
+
+          <!-- ✅ Verified badge -->
+          <div v-if="statementVerified"
+               class="flex items-start gap-2 px-3 py-2.5 rounded-xl
+                      bg-emerald-500/10 border border-emerald-500/30">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                 stroke="#10b981" stroke-width="2.5" class="mt-0.5 flex-shrink-0">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            <div>
+              <p class="text-emerald-400 text-xs font-semibold">Transaction verified in bank statement</p>
+              <p class="text-emerald-400/70 text-xs mt-0.5">
+                Matched on: {{ verificationResult?.found ? verificationResult.matchedOn.join(', ') : '' }}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
+
+      <!-- ── Not-Found Modal overlay ─────────────────────────────────── -->
+      <Transition name="modal-fade">
+        <div v-if="showNotFoundModal"
+             class="fixed inset-0 z-50 flex items-center justify-center p-4"
+             style="background: rgba(0,0,0,0.7); backdrop-filter: blur(6px);"
+             @click.self="showNotFoundModal = false">
+          <div class="bg-surface-card border border-red-500/30 rounded-2xl p-6 w-full max-w-sm
+                      shadow-2xl space-y-4">
+            <!-- Icon -->
+            <div class="flex justify-center">
+              <div class="w-14 h-14 rounded-full bg-red-500/15 border border-red-500/30
+                          flex items-center justify-center">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
+                     stroke="#f87171" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="15" y1="9" x2="9" y2="15"/>
+                  <line x1="9" y1="9" x2="15" y2="15"/>
+                </svg>
+              </div>
+            </div>
+
+            <div class="text-center">
+              <h3 class="text-red-400 font-semibold text-base mb-1">
+                Transaction Not Found
+              </h3>
+              <p class="text-ink-secondary text-sm">
+                This transaction was <strong class="text-red-300">not found</strong>
+                in your bank statement.
+              </p>
+              <p v-if="verificationResult && !verificationResult.found"
+                 class="text-ink-muted text-xs mt-2">
+                {{ verificationResult.reason }}
+              </p>
+            </div>
+
+            <div class="text-xs text-ink-muted bg-surface-input rounded-xl px-3 py-2.5">
+              You can still confirm manually using the checkbox above, or try uploading
+              a different / complete bank statement.
+            </div>
+
+            <button
+              @click="showNotFoundModal = false"
+              class="w-full py-2.5 rounded-xl bg-red-500/20 border border-red-500/40
+                     text-red-300 text-sm font-semibold
+                     hover:bg-red-500/30 transition-colors"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      </Transition>
 
       <div class="flex gap-3">
         <button class="btn-ghost flex-1" @click="resetScan">
@@ -314,7 +433,7 @@
         </button>
         <button
           class="btn-primary flex-1"
-          :disabled="txns.isLoading.value || isDuplicateReceipt || (ownershipStatus !== 'matched' && !hasConfirmedOwnership)"
+          :disabled="txns.isLoading.value || isDuplicateReceipt || !canSave"
           @click="confirmSave"
         >
           {{ txns.isLoading.value ? 'Saving...' : 'Confirm & Save' }}
@@ -358,6 +477,8 @@ import { useDocumentClassifier } from '~/composables/useDocumentClassifier'
 import { useProviderClassifier } from '~/composables/useProviderClassifier'
 import { useSemanticExtractor } from '~/composables/useSemanticExtractor'
 import { useTransactions } from '~/composables/useTransactions'
+import { useBankStatementVerifier } from '~/composables/useBankStatementVerifier'
+import type { VerificationResult } from '~/composables/useBankStatementVerifier'
 import type { NlpResult } from '~/composables/useNlpValidator'
 import type { DocumentClassificationResult } from '~/composables/useDocumentClassifier'
 import type { ProviderClassificationResult } from '~/composables/useProviderClassifier'
@@ -375,6 +496,7 @@ const documentClassifier = useDocumentClassifier()
 const providerClassifier = useProviderClassifier()
 const semanticExtractor = useSemanticExtractor()
 const txns = useTransactions()
+const verifier = useBankStatementVerifier()
 const { $auth, $storage, $storageRef, $uploadBytes, $getDownloadURL } = useNuxtApp() as any
 const uiStore = useUIStore()
 const authStore = useAuthStore()
@@ -397,6 +519,9 @@ const isDuplicateReceipt = ref(false)
 const ownershipStatus = ref<'matched' | 'ambiguous' | 'mismatched'>('matched')
 const hasConfirmedOwnership = ref(false)
 const statementFile = ref<File | null>(null)
+const statementVerified = ref(false)
+const verificationResult = ref<VerificationResult | null>(null)
+const showNotFoundModal = ref(false)
 const userLegalName = ref('')
 
 const processingSteps = [
@@ -659,6 +784,48 @@ async function processImage(imageData: string) {
   step.value = 'review'
 }
 
+// ── Bank statement verification ────────────────────────────────────────────
+
+/** Reset verification state when a new file is selected */
+function handleStatementFileChange(e: Event) {
+  statementFile.value = (e.target as HTMLInputElement).files?.[0] || null
+  statementVerified.value = false
+  verificationResult.value = null
+  showNotFoundModal.value = false
+}
+
+/** Parse the PDF and check if the receipt transaction is in it */
+async function verifyBankStatement() {
+  if (!statementFile.value) return
+
+  const result = await verifier.verifyStatement(statementFile.value, {
+    transactionId: editableFields.transactionId,
+    amount: editableFields.amount,
+    transactionDate: editableFields.transactionDate,
+    merchantName: editableFields.merchantName,
+    upiId: editableFields.upiId,
+  })
+
+  verificationResult.value = result
+
+  if (result.found) {
+    statementVerified.value = true
+    showNotFoundModal.value = false
+    uiStore.success('Transaction found in bank statement ✓')
+  } else {
+    statementVerified.value = false
+    showNotFoundModal.value = true
+  }
+}
+
+/** Whether the user may proceed to save */
+const canSave = computed(() => {
+  if (ownershipStatus.value === 'matched') return true   // auto-matched by name
+  if (statementVerified.value) return true               // verified via PDF
+  if (hasConfirmedOwnership.value) return true           // manual checkbox
+  return false
+})
+
 function resolveStatus() {
   switch (documentResult.value?.kind) {
     case 'upi_receipt_failed':
@@ -726,6 +893,9 @@ async function resetScan() {
   ownershipStatus.value = 'matched'
   hasConfirmedOwnership.value = false
   statementFile.value = null
+  statementVerified.value = false
+  verificationResult.value = null
+  showNotFoundModal.value = false
   isDuplicateReceipt.value = false
   lowConfidence.value = false
   ocrConfidence.value = 0
