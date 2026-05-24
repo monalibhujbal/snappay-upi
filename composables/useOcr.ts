@@ -193,6 +193,36 @@ function grayscaleCanvas(
 function normalizeOcrText(text: string) {
     return text
         .replace(/\r\n/g, '\n')
+        .replace(/â‚¹|Ã¢â€šÂ¹|ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¹/g, '₹')
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n{2,}/g, '\n')
+        .trim()
+}
+
+function normalizeOcrTextForAmount(text: string) {
+    let normalized = text
+        .replace(/\r\n/g, '\n')
+        .replace(/â‚¹|Ã¢â€šÂ¹|ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¹/g, '₹')
+    
+    // Smart "2" to "₹" conversion for amounts
+    // Only convert when it's clearly a misread rupee symbol, not a legitimate "2"
+    
+    // Pattern 1: "2 " followed by 2-4 digits (likely misread ₹)
+    // Examples: "2 41" → "₹ 41", "2 123" → "₹ 123"
+    // But NOT if preceded by another digit (to avoid "12 345" → "1₹ 345")
+    normalized = normalized.replace(/(?<!\d)\b2\s+(\d{2,4}(?:[,\.]\d+)?)\b/g, '₹ $1')
+    
+    // Pattern 2: Line starts with "2" followed by exactly 2-3 digits (e.g., "241" → "₹41", "2123" → "₹123")
+    // But check if it's really an amount context (not a year like "2026" or ID like "2303")
+    normalized = normalized.replace(/^2(\d{2,3})\b/gm, (match, digits) => {
+        const fullNum = parseInt('2' + digits, 10)
+        // Don't convert if it looks like a year (2000-2099) or large number (>2200)
+        if (fullNum >= 2000 && fullNum <= 2099) return match
+        if (fullNum > 2200) return match // Likely a transaction ID or ref number
+        return `₹${digits}`
+    })
+    
+    return normalized
         .replace(/[ \t]+/g, ' ')
         .replace(/\n{2,}/g, '\n')
         .trim()
@@ -242,8 +272,8 @@ function scoreAmountBandText(text: string, confidence: number) {
 }
 
 function normalizeAmountText(text: string) {
-    return normalizeOcrText(text)
-        .replace(/â‚¹|Ã¢â€šÂ¹/g, '₹')
+    return normalizeOcrTextForAmount(text)
+        .replace(/â‚¹|Ã¢â€šÂ¹|ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¹/g, '₹')
         .replace(/\bRS(?=\s*\d)/gi, 'Rs')
         .replace(/\bR(?=\s*\d)/g, '₹')
 }
@@ -283,6 +313,14 @@ function getAmountBandPositionBonus(label: string, provider: ProviderKind) {
 
     if (provider === 'gpay') {
         return Math.max(0, 20 - Math.abs(index - 8) * 4)
+    }
+
+    if (provider === 'phonepe') {
+        return Math.max(0, 18 - Math.abs(index - 4) * 3)
+    }
+
+    if (provider === 'paytm') {
+        return Math.max(0, 18 - Math.abs(index - 4) * 3)
     }
 
     return 0
@@ -407,13 +445,20 @@ function getProviderCrops(provider: ProviderKind): ProviderCrop[] {
             ]
         case 'phonepe':
             return [
-                { x: 0.0, y: 0.05, width: 1.0, height: 0.40, scale: 2.5 },
-                { x: 0.1, y: 0.1, width: 0.8, height: 0.50, scale: 2.5 },
+                // Full top area for PhonePe - wider coverage
+                { x: 0.0, y: 0.08, width: 1.0, height: 0.28, scale: 3.8 },
+                // Right side where amount appears - more focused
+                { x: 0.65, y: 0.10, width: 0.35, height: 0.15, scale: 5.5 },
+                // Merchant name area (left side)
+                { x: 0.05, y: 0.12, width: 0.65, height: 0.18, scale: 3.5 },
+                // Transaction ID area (middle section, below payment details)
+                { x: 0.05, y: 0.30, width: 0.90, height: 0.25, scale: 4.0 },
             ]
         case 'paytm':
             return [
-                { x: 0.0, y: 0.05, width: 1.0, height: 0.40, scale: 2.5 },
-                { x: 0.1, y: 0.1, width: 0.8, height: 0.50, scale: 2.5 },
+                { x: 0.0, y: 0.08, width: 1.0, height: 0.35, scale: 3.2 },
+                { x: 0.15, y: 0.12, width: 0.70, height: 0.30, scale: 3.5 },
+                { x: 0.10, y: 0.15, width: 0.80, height: 0.38, scale: 2.8 },
             ]
         case 'generic_upi':
             return [
@@ -438,6 +483,27 @@ function getProviderAmountBands(provider: ProviderKind): ProviderCrop[] {
                 { x: 0.20, y: 0.22, width: 0.60, height: 0.12, scale: 7 },
                 { x: 0.18, y: 0.24, width: 0.64, height: 0.12, scale: 7 },
                 { x: 0.16, y: 0.26, width: 0.68, height: 0.12, scale: 7 },
+            ]
+        case 'phonepe':
+            return [
+                // PhonePe shows amount on right side, small text - targeting right edge
+                { x: 0.78, y: 0.13, width: 0.20, height: 0.05, scale: 7 },
+                { x: 0.76, y: 0.14, width: 0.22, height: 0.06, scale: 7 },
+                { x: 0.74, y: 0.15, width: 0.24, height: 0.06, scale: 7 },
+                { x: 0.72, y: 0.16, width: 0.26, height: 0.07, scale: 7 },
+                { x: 0.70, y: 0.17, width: 0.28, height: 0.07, scale: 7 },
+                // Also try slightly lower positions
+                { x: 0.76, y: 0.18, width: 0.22, height: 0.06, scale: 7 },
+                { x: 0.74, y: 0.19, width: 0.24, height: 0.06, scale: 7 },
+            ]
+        case 'paytm':
+            return [
+                { x: 0.20, y: 0.12, width: 0.60, height: 0.08, scale: 5.5 },
+                { x: 0.18, y: 0.14, width: 0.64, height: 0.09, scale: 5.5 },
+                { x: 0.15, y: 0.16, width: 0.70, height: 0.10, scale: 6 },
+                { x: 0.12, y: 0.18, width: 0.76, height: 0.10, scale: 6 },
+                { x: 0.25, y: 0.20, width: 0.50, height: 0.09, scale: 7 },
+                { x: 0.22, y: 0.22, width: 0.56, height: 0.10, scale: 7 },
             ]
         default:
             return []
