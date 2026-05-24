@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from 'firebase/app'
-import { getFirestore } from 'firebase/firestore'
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore'
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
 import {
   getAuth,
@@ -29,7 +29,11 @@ export default defineNuxtPlugin(async () => {
     ? getApps()[0]!
     : initializeApp(firebaseConfig)
 
-  const db = getFirestore(app)
+  const db = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager()
+    })
+  })
   const storage = getStorage(app)
   const auth = getAuth(app)
   const authStore = useAuthStore()

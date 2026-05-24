@@ -59,15 +59,16 @@
         </div>
       </div>
 
-      <div class="flex items-center justify-center gap-6 mt-4">
-        <label class="btn-ghost flex items-center gap-2 cursor-pointer">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+      <div class="flex items-center justify-between gap-4 mt-6">
+        <!-- Gallery Upload -->
+        <label class="btn-ghost flex-1 flex items-center justify-center gap-2 cursor-pointer py-3 rounded-xl border border-slate-200/50 dark:border-slate-800/80">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
                stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-            <polyline points="17 8 12 3 7 8"/>
-            <line x1="12" y1="3" x2="12" y2="15"/>
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+            <circle cx="8.5" cy="8.5" r="1.5"/>
+            <polyline points="21 15 16 10 5 21"/>
           </svg>
-          Gallery
+          <span class="text-xs font-bold">Gallery</span>
           <input
             ref="fileInputRef"
             type="file"
@@ -77,20 +78,50 @@
           />
         </label>
 
+        <!-- WebRTC Shutter Capture -->
         <button
-          class="w-16 h-16 rounded-full bg-brand-500 shadow-glow-teal
+          class="w-14 h-14 rounded-full bg-brand-500 shadow-glow-teal
                  flex items-center justify-center transition-all
-                 active:scale-95 disabled:opacity-40"
+                 active:scale-95 disabled:opacity-40 flex-shrink-0"
           :disabled="!camera.isActive.value"
           @click="handleCapture"
         >
-          <div class="w-12 h-12 rounded-full border-2 border-white/40
+          <div class="w-10 h-10 rounded-full border-2 border-white/40
                       flex items-center justify-center">
-            <div class="w-8 h-8 rounded-full bg-white/90"></div>
+            <div class="w-6.5 h-6.5 rounded-full bg-white/90"></div>
           </div>
         </button>
 
-        <div class="w-24"></div>
+        <!-- Native High-Res Camera App -->
+        <label class="btn-primary flex-1 flex items-center justify-center gap-2 cursor-pointer py-3 rounded-xl shadow-sm">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+          <span class="text-xs font-bold">Camera App</span>
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            class="hidden"
+            @change="handleFileUpload"
+          />
+        </label>
+      </div>
+
+      <!-- Scanning guidance tip card -->
+      <div class="mt-6 p-4 rounded-2xl bg-surface-card border border-slate-200/50 dark:border-slate-800/80">
+        <div class="flex items-start gap-3">
+          <span class="text-base text-brand-500">💡</span>
+          <div>
+            <h4 class="text-xs font-bold text-ink-primary tracking-tight">Tips for screen verification</h4>
+            <p class="text-[10px] text-ink-muted leading-relaxed mt-1">
+              If scanning a receipt shown on another person's mobile phone, tap <strong>Camera App</strong>. 
+              This boots your device's native high-resolution camera with active macro autofocus to fully bypass screen moire-grids and glare!
+            </p>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -246,6 +277,12 @@
             <label class="text-xs text-ink-muted mb-1 block">Date</label>
             <input v-model="editableFields.transactionDate" class="input-field" />
           </div>
+          <div>
+            <label class="text-xs text-ink-muted mb-1 block">Category</label>
+            <select v-model="editableFields.category" class="input-field w-full bg-surface-input border border-slate-700/60 rounded-xl px-4 py-2.5 text-sm font-medium outline-none text-ink-primary focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20">
+              <option v-for="cat in CATEGORIES" :key="cat" :value="cat">{{ cat }}</option>
+            </select>
+          </div>
           <div class="flex items-center justify-between pt-1">
             <span class="text-xs text-ink-muted">Direction</span>
             <span class="text-xs font-medium px-3 py-1 rounded-full"
@@ -328,7 +365,7 @@
       <div class="w-20 h-20 rounded-full bg-brand-500/15 border border-brand-500/25
                   flex items-center justify-center mb-6 shadow-glow-teal">
         <svg width="36" height="36" viewBox="0 0 24 24" fill="none"
-             stroke="#14b8a6" stroke-width="2">
+             stroke="#0ea5e9" stroke-width="2">
           <polyline points="20 6 9 17 4 12"/>
         </svg>
       </div>
@@ -358,6 +395,7 @@ import { useDocumentClassifier } from '~/composables/useDocumentClassifier'
 import { useProviderClassifier } from '~/composables/useProviderClassifier'
 import { useSemanticExtractor } from '~/composables/useSemanticExtractor'
 import { useTransactions } from '~/composables/useTransactions'
+import { CATEGORIES, categorizeMerchant } from '~/composables/useCategoryHelper'
 import type { NlpResult } from '~/composables/useNlpValidator'
 import type { DocumentClassificationResult } from '~/composables/useDocumentClassifier'
 import type { ProviderClassificationResult } from '~/composables/useProviderClassifier'
@@ -414,6 +452,7 @@ const editableFields = reactive({
   amount: 0,
   merchantName: '',
   transactionDate: '',
+  category: 'Others',
 })
 
 watch(
@@ -622,6 +661,7 @@ async function processImage(imageData: string) {
   }
 
   Object.assign(editableFields, mergedFields)
+  editableFields.category = categorizeMerchant(mergedFields.merchantName, ocrText.value)
   processingStep.value = 5
 
   console.log('Running NLP...')
@@ -736,6 +776,7 @@ async function resetScan() {
     amount: 0,
     merchantName: '',
     transactionDate: '',
+    category: 'Others',
   })
 
   if (videoRef.value) await camera.startCamera(videoRef.value)

@@ -28,7 +28,7 @@
         This month
       </p>
       <p class="text-3xl font-semibold text-ink-primary font-mono mb-1">
-        ₹{{ totalAmount.toLocaleString('en-IN') }}
+        ₹{{ uiStore.privacyMode ? '••••' : totalAmount.toLocaleString('en-IN') }}
       </p>
       <p class="text-ink-muted text-xs">{{ txns.transactions.value.length }} transactions verified</p>
       <div class="mt-4 h-px bg-slate-700/50"></div>
@@ -36,17 +36,19 @@
         <div>
           <p class="text-ink-muted text-xs mb-0.5">Sent</p>
           <p class="text-sm font-medium text-red-400 font-mono">
-            ₹{{ sentAmount.toLocaleString('en-IN') }}
+            ₹{{ uiStore.privacyMode ? '••••' : sentAmount.toLocaleString('en-IN') }}
           </p>
         </div>
         <div>
           <p class="text-ink-muted text-xs mb-0.5">Received</p>
           <p class="text-sm font-medium text-brand-400 font-mono">
-            ₹{{ receivedAmount.toLocaleString('en-IN') }}
+            ₹{{ uiStore.privacyMode ? '••••' : receivedAmount.toLocaleString('en-IN') }}
           </p>
         </div>
       </div>
     </div>
+
+
 
     <div class="fade-up-3 mb-6">
       <div class="flex items-center justify-between mb-3">
@@ -92,7 +94,7 @@
                  ? 'bg-red-500/10'
                  : 'bg-brand-500/10'">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                 :stroke="txn.direction === 'sent' ? '#f87171' : '#14b8a6'"
+                 :stroke="txn.direction === 'sent' ? '#f87171' : '#0ea5e9'"
                  stroke-width="2">
               <path v-if="txn.direction === 'sent'"
                     d="M12 19V5M5 12l7-7 7 7"/>
@@ -108,7 +110,7 @@
           <div class="text-right flex-shrink-0">
             <p class="text-sm font-medium font-mono"
                :class="txn.direction === 'sent' ? 'text-red-400' : 'text-brand-400'">
-              {{ txn.direction === 'sent' ? '-' : '+' }}₹{{ txn.amount.toLocaleString('en-IN') }}
+              {{ txn.direction === 'sent' ? '-' : '+' }}₹{{ uiStore.privacyMode ? '••••' : txn.amount.toLocaleString('en-IN') }}
             </p>
             <span class="text-xs px-2 py-0.5 rounded-full"
                   :class="txn.status === 'verified'
@@ -137,7 +139,7 @@
           <div class="w-14 h-14 rounded-2xl bg-brand-500/10 border border-brand-500/20
                       flex items-center justify-center">
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none"
-                 stroke="#14b8a6" stroke-width="1.5">
+                 stroke="#0ea5e9" stroke-width="1.5">
               <path d="M14.5 4h-5L7 7H4a2 2 0 00-2 2v9a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2h-3l-2.5-3z"/>
               <circle cx="12" cy="13" r="3"/>
             </svg>
@@ -167,11 +169,14 @@
 import { computed, onMounted } from 'vue'
 import { navigateTo } from 'nuxt/app'
 import { useAuthStore } from '../stores/auth'
+import { useUIStore } from '../stores/ui'
 import { useTransactions } from '~/composables/useTransactions'
+import { CATEGORIES, categorizeMerchant, getCategoryIcon, getCategoryBarColor } from '~/composables/useCategoryHelper'
 
 definePageMeta({ middleware: ['auth'] })
 
 const authStore = useAuthStore()
+const uiStore   = useUIStore()
 const txns      = useTransactions()
 
 onMounted(() => {
@@ -215,4 +220,5 @@ const receivedAmount = computed(() =>
     .filter(t => t.direction === 'received')
     .reduce((sum, t) => sum + (t.amount || 0), 0)
 )
+
 </script>

@@ -2,6 +2,14 @@
   <div class="min-h-screen bg-surface-base bg-grid-pattern
               flex items-center justify-center px-5 py-10 overflow-hidden relative">
 
+    <button
+      @click="toggleTheme"
+      class="absolute top-5 right-5 w-10 h-10 rounded-xl bg-surface-card border border-slate-300/30 dark:border-slate-700/50 flex items-center justify-center text-base hover:bg-surface-input active:scale-95 transition-all shadow-sm z-50"
+      title="Toggle Appearance"
+    >
+      <span>{{ isDark ? '☀️' : '🌙' }}</span>
+    </button>
+
     <div class="orb-1 absolute top-[-120px] right-[-80px] w-[380px] h-[380px]
                 rounded-full bg-brand-500/8 blur-3xl pointer-events-none" />
     <div class="orb-2 absolute bottom-[-80px] left-[-60px] w-[280px] h-[280px]
@@ -15,7 +23,7 @@
                     shadow-glow-sm mb-5">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
             <path d="M13 2L4.5 13.5H12L11 22L19.5 10.5H12L13 2Z"
-                  fill="#14b8a6" stroke="#14b8a6"
+                  fill="#0ea5e9" stroke="#0ea5e9"
                   stroke-width="1.5" stroke-linejoin="round"/>
           </svg>
         </div>
@@ -229,11 +237,13 @@ import { ref, onMounted } from 'vue'
 import { navigateTo, useNuxtApp } from 'nuxt/app'
 import { useAuthStore } from '../stores/auth'
 import { useUIStore } from '../stores/ui'
-
-definePageMeta({ layout: false })
+import { useTheme } from '~/composables/useTheme'
 
 const authStore = useAuthStore()
 const uiStore   = useUIStore()
+const { isDark, toggleTheme, initTheme } = useTheme()
+
+definePageMeta({ layout: false })
 
 const authMethod = ref<'email' | 'phone'>('email')
 const isSignUp = ref(false)
@@ -257,6 +267,7 @@ let $GoogleAuthProvider: any    = null
 let $signInWithPopup: any       = null
 
 onMounted(() => {
+  initTheme()
   const nuxt = useNuxtApp() as any
   $auth                  = nuxt.$auth
   $RecaptchaVerifier     = nuxt.$RecaptchaVerifier

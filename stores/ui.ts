@@ -4,9 +4,16 @@ import type { ToastMessage } from '../types'
 export const useUIStore = defineStore('ui', {
     state: () => ({
         toasts: [] as ToastMessage[],
+        privacyMode: typeof window !== 'undefined' ? localStorage.getItem('privacy_mode') === 'true' : false,
     }),
 
     actions: {
+        togglePrivacyMode() {
+            this.privacyMode = !this.privacyMode
+            if (typeof window !== 'undefined') {
+                localStorage.setItem('privacy_mode', this.privacyMode.toString())
+            }
+        },
         showToast(
             message: string,
             type: ToastMessage['type'] = 'info',

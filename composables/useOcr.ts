@@ -582,7 +582,7 @@ export function useOcr() {
 
             const curatedAmountTexts = cleanAmount
                 ? parsedAmountCandidates
-                    .filter(candidate => candidate.score >= Math.max(bestAmountCandidate.score - 18, 110))
+                    .filter(candidate => candidate.score >= Math.max(bestAmountCandidate!.score - 18, 110))
                     .slice(0, 2)
                     .map(candidate => candidate.text)
                 : []

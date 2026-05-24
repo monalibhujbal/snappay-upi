@@ -2,35 +2,68 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* Crisp, premium Light Theme - White-Light Blue Layout */
+  --surface-base: #f1f6fa;
+  --surface-card: #ffffff;
+  --surface-input: #f4f8fb;
+  --surface-glass: rgba(255, 255, 255, 0.85);
+  --border-color: rgba(14, 165, 233, 0.12);
+  --border-glow: rgba(14, 165, 233, 0.2);
+  --ink-primary: #0f172a;
+  --ink-secondary: #475569;
+  --ink-muted: #94a3b8;
+  --brand-color: #0ea5e9;
+  --shadow-card: 0 4px 20px rgba(14, 165, 233, 0.08);
+  --shadow-glow: 0 0 16px rgba(14, 165, 233, 0.15);
+}
+
+.dark {
+  /* Premium Dark Theme */
+  --surface-base: #080e1a;
+  --surface-card: #0f1829;
+  --surface-input: #162033;
+  --surface-glass: rgba(15, 24, 41, 0.8);
+  --border-color: rgba(51, 65, 85, 0.5);
+  --border-glow: rgba(14, 165, 233, 0.2);
+  --ink-primary: #f1f5f9;
+  --ink-secondary: #94a3b8;
+  --ink-muted: #475569;
+  --brand-color: #0ea5e9;
+  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.4);
+  --shadow-glow: 0 0 24px rgba(14, 165, 233, 0.25);
+}
+
 @layer base {
   * {
     -webkit-tap-highlight-color: transparent;
   }
 
   body {
-    background-color: #080e1a;
-    color: #f1f5f9;
+    background-color: var(--surface-base);
+    color: var(--ink-primary);
     font-family: 'DM Sans', sans-serif;
     -webkit-font-smoothing: antialiased;
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
 }
 
 @layer components {
 
   .btn-primary {
-    @apply relative overflow-hidden bg-brand-500 text-white font-medium py-3 px-6 rounded-xl transition-all duration-200 hover:bg-brand-600 hover:shadow-glow-teal active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-none;
+    @apply relative overflow-hidden bg-brand-500 text-white font-medium py-3 px-6 rounded-xl transition-all duration-200 hover:bg-brand-600 hover:shadow-[var(--shadow-glow)] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-none;
   }
 
   .btn-ghost {
-    @apply relative bg-surface-input text-ink-secondary font-medium py-3 px-6 rounded-xl border border-slate-700/60 transition-all duration-200 hover:border-brand-500/50 hover:text-ink-primary active:scale-[0.98] disabled:opacity-40;
+    @apply relative bg-surface-input text-ink-secondary font-medium py-3 px-6 rounded-xl border border-[color:var(--border-color)] transition-all duration-200 hover:border-brand-500/50 hover:text-ink-primary active:scale-[0.98] disabled:opacity-40;
   }
 
   .input-field {
-    @apply w-full bg-surface-input text-ink-primary placeholder-ink-muted border border-slate-700/60 rounded-xl px-4 py-3 text-sm font-medium outline-none transition-all duration-200 focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20;
+    @apply w-full bg-surface-input text-ink-primary placeholder-ink-muted border border-[color:var(--border-color)] rounded-xl px-4 py-3 text-sm font-medium outline-none transition-all duration-200 focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20;
   }
 
   .glass-card {
-    @apply bg-surface-glass backdrop-blur-xl border border-slate-700/40 rounded-2xl shadow-card;
+    @apply bg-surface-glass backdrop-blur-xl border border-[color:var(--border-color)] rounded-2xl shadow-[var(--shadow-card)] transition-all duration-300;
   }
 
   .nav-item {

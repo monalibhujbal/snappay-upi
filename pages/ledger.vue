@@ -66,7 +66,7 @@
                  ? 'bg-red-500/10'
                  : 'bg-brand-500/10'">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                 :stroke="txn.direction === 'sent' ? '#f87171' : '#14b8a6'"
+                 :stroke="txn.direction === 'sent' ? '#f87171' : '#0ea5e9'"
                  stroke-width="2">
               <path v-if="txn.direction === 'sent'"
                     d="M12 19V5M5 12l7-7 7 7"/>
@@ -74,37 +74,57 @@
             </svg>
           </div>
           <div class="flex-1 min-w-0">
-            <p class="text-sm font-medium text-ink-primary truncate">
-              {{ txn.merchantName || 'Unknown merchant' }}
-            </p>
+            <div class="flex items-center gap-2 flex-wrap">
+              <p class="text-sm font-medium text-ink-primary truncate">
+                {{ txn.merchantName || 'Unknown merchant' }}
+              </p>
+              <span class="text-xs px-1.5 py-0.5 rounded bg-surface-input border border-[color:var(--border-color)] flex items-center gap-1.5 text-[10px] font-medium text-ink-secondary">
+                <UiCategoryIcon :category="txn.category || categorizeMerchant(txn.merchantName || '', txn.ocrRawText || '')" size="sm" class="!p-0 !bg-transparent w-3.5 h-3.5" />
+                <span>{{ txn.category || categorizeMerchant(txn.merchantName || '', txn.ocrRawText || '') }}</span>
+              </span>
+            </div>
             <p class="text-xs text-ink-muted mt-0.5">{{ txn.transactionDate }}</p>
           </div>
           <div class="text-right flex-shrink-0">
             <p class="text-sm font-semibold font-mono"
                :class="txn.direction === 'sent' ? 'text-red-400' : 'text-brand-400'">
-              {{ txn.direction === 'sent' ? '-' : '+' }}₹{{ txn.amount.toLocaleString('en-IN') }}
+              {{ txn.direction === 'sent' ? '-' : '+' }}₹{{ uiStore.privacyMode ? '••••' : txn.amount.toLocaleString('en-IN') }}
             </p>
           </div>
         </div>
 
-        <div class="mt-3 pt-3 border-t border-slate-700/40 flex items-center
+        <div class="mt-3 pt-3 border-t border-[color:var(--border-color)] flex items-center
                     justify-between flex-wrap gap-2">
           <div class="flex items-center gap-2">
             <span class="text-xs px-2 py-0.5 rounded-full"
                   :class="(txn.status === 'verified' || txn.status === 'verified_manual')
-                    ? 'bg-brand-500/10 text-brand-400'
+                    ? 'bg-brand-500/10 text-brand-600 dark:text-brand-400 font-semibold'
                     : txn.status === 'flagged'
-                      ? 'bg-amber-500/10 text-amber-400'
-                      : 'bg-slate-700/50 text-ink-muted'">
+                      ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold'
+                      : 'bg-surface-input text-ink-secondary'">
               {{ txn.status === 'verified_manual' ? 'Verified (Manual)' : txn.status }}
             </span>
             <span class="text-xs px-2 py-0.5 rounded-full bg-surface-input text-ink-muted">
               {{ txn.direction }}
             </span>
+            <span v-if="txn.statementUrl" class="text-xs px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20 font-medium">
+              Statement Verified
+            </span>
           </div>
-          <p class="text-xs text-ink-muted font-mono truncate max-w-[160px]">
-            {{ txn.upiId || txn.transactionId || 'No ID' }}
-          </p>
+          <div class="flex items-center gap-3 ml-auto">
+            <a v-if="txn.statementUrl" :href="txn.statementUrl" target="_blank"
+               class="text-xs text-brand-400 hover:text-brand-300 flex items-center gap-1 transition-colors">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/>
+                <polyline points="15 3 21 3 21 9"/>
+                <line x1="10" y1="14" x2="21" y2="3"/>
+              </svg>
+              View Statement
+            </a>
+            <p class="text-xs text-ink-muted font-mono truncate max-w-[120px]">
+              {{ txn.upiId || txn.transactionId || 'No ID' }}
+            </p>
+          </div>
         </div>
       </div>
     </div>
@@ -115,16 +135,20 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useTransactions } from '~/composables/useTransactions'
+import { useUIStore } from '../stores/ui'
+import { getCategoryIcon, getCategoryColor, categorizeMerchant } from '~/composables/useCategoryHelper'
 
 definePageMeta({ middleware: ['auth'] })
 
 const txns = useTransactions()
+const uiStore = useUIStore()
 
 const filters = [
   { label: 'All',      value: 'all'      },
   { label: 'Sent',     value: 'sent'     },
   { label: 'Received', value: 'received' },
   { label: 'Flagged',  value: 'flagged'  },
+  { label: 'Statement Verified', value: 'statement' },
 ]
 
 const activeFilter = ref('all')
@@ -137,6 +161,9 @@ const filteredTransactions = computed(() => {
   if (activeFilter.value === 'all') return txns.transactions.value
   if (activeFilter.value === 'flagged') {
     return txns.transactions.value.filter(t => t.status === 'flagged')
+  }
+  if (activeFilter.value === 'statement') {
+    return txns.transactions.value.filter(t => !!t.statementUrl)
   }
   return txns.transactions.value.filter(t => t.direction === activeFilter.value)
 })
