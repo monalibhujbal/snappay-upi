@@ -48,8 +48,6 @@
       </div>
     </div>
 
-
-
     <div class="fade-up-3 mb-6">
       <div class="flex items-center justify-between mb-3">
         <p class="text-xs font-medium text-ink-muted uppercase tracking-widest">
@@ -113,12 +111,8 @@
               {{ txn.direction === 'sent' ? '-' : '+' }}₹{{ uiStore.privacyMode ? '••••' : txn.amount.toLocaleString('en-IN') }}
             </p>
             <span class="text-xs px-2 py-0.5 rounded-full"
-                  :class="txn.status === 'verified'
-                    ? 'bg-brand-500/10 text-brand-400'
-                    : txn.status === 'flagged'
-                      ? 'bg-amber-500/10 text-amber-400'
-                      : 'bg-slate-700/50 text-ink-muted'">
-              {{ txn.status }}
+                  :class="getStatusDetails(txn.status).class">
+              {{ getStatusDetails(txn.status).label }}
             </span>
           </div>
         </div>
@@ -220,5 +214,40 @@ const receivedAmount = computed(() =>
     .filter(t => t.direction === 'received')
     .reduce((sum, t) => sum + (t.amount || 0), 0)
 )
+
+function getStatusDetails(status: string) {
+  switch (status) {
+    case 'verified':
+      return {
+        label: 'Verified',
+        class: 'bg-brand-500/10 text-brand-600 dark:text-brand-400 font-semibold'
+      }
+    case 'verified_manual':
+      return {
+        label: 'Verified (Manual)',
+        class: 'bg-brand-500/10 text-brand-600 dark:text-brand-400 font-semibold'
+      }
+    case 'flagged':
+      return {
+        label: 'Flagged',
+        class: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold'
+      }
+    case 'pending':
+      return {
+        label: 'Pending',
+        class: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold'
+      }
+    case 'failed':
+      return {
+        label: 'Failed',
+        class: 'bg-red-500/10 text-red-600 dark:text-red-400 font-semibold'
+      }
+    default:
+      return {
+        label: status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Unknown',
+        class: 'bg-surface-input text-ink-secondary font-medium'
+      }
+  }
+}
 
 </script>

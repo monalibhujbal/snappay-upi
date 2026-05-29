@@ -97,12 +97,8 @@
                     justify-between flex-wrap gap-2">
           <div class="flex items-center gap-2">
             <span class="text-xs px-2 py-0.5 rounded-full"
-                  :class="(txn.status === 'verified' || txn.status === 'verified_manual')
-                    ? 'bg-brand-500/10 text-brand-600 dark:text-brand-400 font-semibold'
-                    : txn.status === 'flagged'
-                      ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold'
-                      : 'bg-surface-input text-ink-secondary'">
-              {{ txn.status === 'verified_manual' ? 'Verified (Manual)' : txn.status }}
+                  :class="getStatusDetails(txn.status).class">
+              {{ getStatusDetails(txn.status).label }}
             </span>
             <span class="text-xs px-2 py-0.5 rounded-full bg-surface-input text-ink-muted">
               {{ txn.direction }}
@@ -167,4 +163,39 @@ const filteredTransactions = computed(() => {
   }
   return txns.transactions.value.filter(t => t.direction === activeFilter.value)
 })
+
+function getStatusDetails(status: string) {
+  switch (status) {
+    case 'verified':
+      return {
+        label: 'Verified',
+        class: 'bg-brand-500/10 text-brand-600 dark:text-brand-400 font-semibold'
+      }
+    case 'verified_manual':
+      return {
+        label: 'Verified (Manual)',
+        class: 'bg-brand-500/10 text-brand-600 dark:text-brand-400 font-semibold'
+      }
+    case 'flagged':
+      return {
+        label: 'Flagged',
+        class: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold'
+      }
+    case 'pending':
+      return {
+        label: 'Pending',
+        class: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold'
+      }
+    case 'failed':
+      return {
+        label: 'Failed',
+        class: 'bg-red-500/10 text-red-600 dark:text-red-400 font-semibold'
+      }
+    default:
+      return {
+        label: status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Unknown',
+        class: 'bg-surface-input text-ink-secondary font-medium'
+      }
+  }
+}
 </script>
