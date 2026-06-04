@@ -1,57 +1,72 @@
 <template>
-  <div class="min-h-screen bg-surface-base px-5 pt-14 pb-28 relative overflow-hidden">
+  <div class="min-h-screen bg-surface-base px-5 pt-14 pb-28 relative overflow-x-hidden">
     <div class="orb-1 absolute top-[-100px] right-[-60px] w-[300px] h-[300px]
                 rounded-full bg-brand-500/6 blur-3xl pointer-events-none" />
 
     <div class="fade-up-1 flex items-center gap-4 mb-8">
       <NuxtLink to="/"
-        class="w-9 h-9 rounded-xl bg-surface-card border border-slate-700/60
+        class="w-10 h-10 rounded-xl bg-surface-card border border-[color:var(--border-color)]
                flex items-center justify-center text-ink-secondary
-               hover:text-ink-primary transition-colors">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-             stroke="currentColor" stroke-width="2">
+               hover:text-ink-primary hover:border-brand-500/30 transition-all shadow-sm">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2.5">
           <path d="M19 12H5M12 19l-7-7 7-7"/>
         </svg>
       </NuxtLink>
-      <h1 class="text-lg font-semibold text-ink-primary">Scan Receipt</h1>
+      <h1 class="text-xl font-bold text-ink-primary tracking-tight">Scan Receipt</h1>
     </div>
 
     <div v-if="step === 'capture'" class="fade-up-2">
-      <div class="glass-card overflow-hidden mb-4 relative min-h-[240px]">
+      <!-- Camera viewport: dynamic aspect ratio for mobile vs desktop -->
+      <div class="glass-card-premium overflow-hidden mb-5 relative w-full aspect-[3/4.2] sm:aspect-video rounded-2xl">
         <video
           ref="videoRef"
           autoplay
           playsinline
-          class="w-full aspect-video object-cover bg-surface-input"
+          class="w-full h-full object-cover bg-surface-input"
           :class="{ 'opacity-0': !camera.isActive.value }"
         />
 
+        <!-- Gemini-like Viewfinder with glowing corner brackets & scanning laser -->
         <div v-if="camera.isActive.value"
-             class="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div class="relative w-64 h-40">
-            <div class="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-brand-500 rounded-tl-lg"></div>
-            <div class="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-brand-500 rounded-tr-lg"></div>
-            <div class="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-brand-500 rounded-bl-lg"></div>
-            <div class="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-brand-500 rounded-br-lg"></div>
+             class="absolute inset-0 flex items-center justify-center pointer-events-none p-5">
+          <div class="relative w-full max-w-[280px] aspect-[3/4.8] sm:aspect-video sm:max-w-md border border-white/5 rounded-2xl transition-all duration-300">
+            <!-- Corner Brackets -->
+            <div class="absolute top-[-2px] left-[-2px] w-8 h-8 border-t-4 border-l-4 border-brand-500 rounded-tl-xl shadow-glow"></div>
+            <div class="absolute top-[-2px] right-[-2px] w-8 h-8 border-t-4 border-r-4 border-brand-500 rounded-tr-xl shadow-glow"></div>
+            <div class="absolute bottom-[-2px] left-[-2px] w-8 h-8 border-b-4 border-l-4 border-brand-500 rounded-bl-xl shadow-glow"></div>
+            <div class="absolute bottom-[-2px] right-[-2px] w-8 h-8 border-b-4 border-r-4 border-brand-500 rounded-br-xl shadow-glow"></div>
+            
+            <!-- Gemini-like scanning beam overlay -->
+            <div class="absolute inset-0 overflow-hidden rounded-2xl pointer-events-none">
+              <div class="scanner-laser absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-brand-500 to-transparent shadow-[0_0_12px_rgba(var(--glow-color),0.8),0_0_24px_rgba(var(--glow-color),0.5)]"></div>
+              <!-- Ambient pulse grid -->
+              <div class="absolute inset-0 opacity-[0.03] bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-brand-500 via-transparent to-transparent animate-pulse bg-grid-pattern"></div>
+            </div>
           </div>
         </div>
 
         <div v-if="!camera.isActive.value && !camera.error.value"
              class="absolute inset-0 flex items-center justify-center bg-surface-input">
           <div class="flex flex-col items-center gap-3 text-ink-muted">
-            <svg class="animate-spin w-8 h-8" viewBox="0 0 24 24" fill="none">
+            <svg class="animate-spin w-8 h-8 text-brand-500" viewBox="0 0 24 24" fill="none">
               <circle cx="12" cy="12" r="10" stroke="currentColor"
-                      stroke-width="2" stroke-dasharray="32" stroke-dashoffset="12"/>
+                      stroke-width="2.5" stroke-dasharray="32" stroke-dashoffset="12"/>
             </svg>
-            <p class="text-sm">Starting camera...</p>
+            <p class="text-sm font-semibold tracking-wide">Starting Camera Stream...</p>
           </div>
         </div>
 
         <div v-if="camera.error.value"
              class="absolute inset-0 flex items-center justify-center bg-surface-input px-6">
-          <div class="text-center">
-            <p class="text-red-400 text-sm mb-4">{{ camera.error.value }}</p>
-            <label class="btn-primary text-sm cursor-pointer px-4 py-2 rounded-xl">
+          <div class="text-center max-w-xs">
+            <p class="text-red-400 text-sm mb-5 font-semibold">{{ camera.error.value }}</p>
+            <label class="btn-primary text-xs cursor-pointer px-5 py-2.5 rounded-xl shadow-lg flex items-center justify-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <polyline points="21 15 16 10 5 21"/>
+              </svg>
               Upload from gallery
               <input type="file" accept="image/*" class="hidden" @change="handleFileUpload" />
             </label>
@@ -61,8 +76,8 @@
 
       <div class="flex items-center justify-between gap-4 mt-6">
         <!-- Gallery Upload -->
-        <label class="btn-ghost flex-1 flex items-center justify-center gap-2 cursor-pointer py-3 rounded-xl border border-slate-200/50 dark:border-slate-800/80">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+        <label class="btn-ghost flex-1 flex items-center justify-center gap-2 cursor-pointer py-3.5 rounded-xl border border-slate-200/50 dark:border-slate-800/80">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
                stroke="currentColor" stroke-width="2">
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
             <circle cx="8.5" cy="8.5" r="1.5"/>
@@ -80,21 +95,21 @@
 
         <!-- WebRTC Shutter Capture -->
         <button
-          class="w-14 h-14 rounded-full bg-brand-500 shadow-glow-teal
-                 flex items-center justify-center transition-all
-                 active:scale-95 disabled:opacity-40 flex-shrink-0"
+          class="w-16 h-16 rounded-full bg-gradient-to-r from-indigo-500 to-sky-500 shadow-[0_0_20px_rgba(99,102,241,0.3)]
+                 flex items-center justify-center transition-all duration-300
+                 hover:scale-105 active:scale-95 disabled:opacity-40 flex-shrink-0"
           :disabled="!camera.isActive.value"
           @click="handleCapture"
         >
-          <div class="w-10 h-10 rounded-full border-2 border-white/40
+          <div class="w-12 h-12 rounded-full border-2 border-white/30
                       flex items-center justify-center">
-            <div class="w-6.5 h-6.5 rounded-full bg-white/90"></div>
+            <div class="w-8 h-8 rounded-full bg-white/90 shadow-inner"></div>
           </div>
         </button>
 
         <!-- Native High-Res Camera App -->
-        <label class="btn-primary flex-1 flex items-center justify-center gap-2 cursor-pointer py-3 rounded-xl shadow-sm">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+        <label class="btn-primary flex-1 flex items-center justify-center gap-2 cursor-pointer py-3.5 rounded-xl shadow-sm">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
                stroke="currentColor" stroke-width="2">
             <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
             <circle cx="12" cy="13" r="4"/>
@@ -111,11 +126,11 @@
       </div>
 
       <!-- Scanning guidance tip card -->
-      <div class="mt-6 p-4 rounded-2xl bg-surface-card border border-slate-200/50 dark:border-slate-800/80">
+      <div class="mt-6 p-4 rounded-2xl bg-surface-card border border-[color:var(--border-color)] shadow-sm">
         <div class="flex items-start gap-3">
-          <span class="text-base text-brand-500">💡</span>
+          <span class="text-lg">💡</span>
           <div>
-            <h4 class="text-xs font-bold text-ink-primary tracking-tight">Tips for screen verification</h4>
+            <h4 class="text-xs font-extrabold text-ink-primary tracking-tight uppercase">Tips for screen verification</h4>
             <p class="text-[10px] text-ink-muted leading-relaxed mt-1">
               If scanning a receipt shown on another person's mobile phone, tap <strong>Camera App</strong>. 
               This boots your device's native high-resolution camera with active macro autofocus to fully bypass screen moire-grids and glare!
@@ -126,41 +141,49 @@
     </div>
 
     <div v-else-if="step === 'processing'" class="fade-up-2">
-      <div class="glass-card p-6 mb-4">
-        <img
-          v-if="capturedImageData"
-          :src="capturedImageData"
-          class="w-full rounded-xl mb-6 object-cover max-h-48"
-        />
+      <div class="glass-card-premium p-6 mb-4 overflow-hidden relative">
+        <div class="absolute top-0 right-0 w-48 h-48 rounded-full bg-brand-500/5 blur-3xl pointer-events-none" />
+        <div class="relative w-full rounded-2xl mb-6 overflow-hidden max-h-56 shadow-[var(--shadow-card)] border border-white/5">
+          <img
+            v-if="capturedImageData"
+            :src="capturedImageData"
+            class="w-full object-cover max-h-56"
+          />
+          <!-- Scanning overlay line sweep while processing -->
+          <div class="absolute inset-0 pointer-events-none">
+            <div class="scanner-laser absolute left-0 right-0 h-1.5 bg-gradient-to-r from-transparent via-brand-500 to-transparent shadow-[0_0_15px_rgba(var(--glow-color),0.8)]"></div>
+          </div>
+        </div>
+
         <div class="space-y-4">
           <div v-for="(s, i) in processingSteps" :key="i"
-               class="flex items-center gap-3">
-            <div class="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+               class="flex items-center gap-3.5 transition-all duration-300">
+            <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm border"
                  :class="i < processingStep
-                   ? 'bg-brand-500/20 text-brand-400'
+                   ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
                    : i === processingStep
-                     ? 'bg-brand-500/10 text-brand-500'
-                     : 'bg-surface-input text-ink-muted'">
-              <svg v-if="i < processingStep" width="14" height="14"
-                   viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                     ? 'bg-brand-500/10 border-brand-500/30 text-brand-400'
+                     : 'bg-surface-input border-transparent text-ink-muted'">
+              <svg v-if="i < processingStep" width="16" height="16"
+                   viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
                 <polyline points="20 6 9 17 4 12"/>
               </svg>
               <svg v-else-if="i === processingStep"
-                   class="animate-spin" width="14" height="14"
+                   class="animate-spin" width="16" height="16"
                    viewBox="0 0 24 24" fill="none">
                 <circle cx="12" cy="12" r="10" stroke="currentColor"
-                        stroke-width="2" stroke-dasharray="32" stroke-dashoffset="12"/>
+                        stroke-width="2.5" stroke-dasharray="32" stroke-dashoffset="12"/>
               </svg>
-              <span v-else class="text-xs font-mono">{{ i + 1 }}</span>
+              <span v-else class="text-xs font-mono font-bold">{{ i + 1 }}</span>
             </div>
-            <div class="flex-1">
-              <p class="text-sm font-medium"
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-semibold transition-colors duration-300"
                  :class="i <= processingStep ? 'text-ink-primary' : 'text-ink-muted'">
                 {{ s.label }}
               </p>
               <p v-if="i === 0 && processingStep === 0"
-                 class="text-xs text-brand-400 mt-0.5">
-                {{ ocr.ocrProgress.value }}%
+                 class="text-xs text-brand-400 font-semibold font-mono mt-0.5 animate-pulse">
+                {{ ocr.ocrProgress.value }}% Completed
               </p>
             </div>
           </div>
@@ -169,126 +192,131 @@
     </div>
 
     <div v-else-if="step === 'review'" class="fade-up-2">
-      <div v-if="documentResult"
-           class="glass-card p-4 mb-4 flex items-center justify-between gap-3">
-        <div>
-          <p class="text-xs text-ink-muted uppercase tracking-widest mb-1">Detected document</p>
-          <p class="text-sm font-medium text-ink-primary">{{ documentLabel }}</p>
-          <p class="text-xs text-ink-muted mt-1">
-            Confidence {{ Math.round(documentResult.score * 100) }}%
-          </p>
+      <!-- Grid for Results -->
+      <div class="grid grid-cols-1 gap-4 mb-4">
+        <div v-if="documentResult"
+             class="glass-card-premium p-4 flex items-center justify-between gap-3 border-l-4 border-l-indigo-500">
+          <div>
+            <p class="text-[9px] text-ink-muted uppercase font-bold tracking-wider mb-0.5">Detected Document</p>
+            <p class="text-sm font-bold text-ink-primary">{{ documentLabel }}</p>
+            <p class="text-[10px] text-ink-secondary mt-0.5">
+              Confidence {{ Math.round(documentResult.score * 100) }}%
+            </p>
+          </div>
+          <span class="text-xs font-bold px-3 py-1 rounded-full"
+                :class="documentBadgeClass">
+            {{ documentResult.kind.replaceAll('_', ' ') }}
+          </span>
         </div>
-        <span class="text-xs font-medium px-3 py-1 rounded-full"
-              :class="documentBadgeClass">
-          {{ documentResult.kind.replaceAll('_', ' ') }}
-        </span>
+
+        <div v-if="providerResult"
+             class="glass-card-premium p-4 flex items-center justify-between gap-3 border-l-4 border-l-cyan-500">
+          <div>
+            <p class="text-[9px] text-ink-muted uppercase font-bold tracking-wider mb-0.5">Detected Provider</p>
+            <p class="text-sm font-bold text-ink-primary">{{ providerLabel }}</p>
+            <p class="text-[10px] text-ink-secondary mt-0.5">
+              Confidence {{ Math.round(providerResult.score * 100) }}%
+            </p>
+          </div>
+          <span class="text-xs font-bold px-3 py-1 rounded-full"
+                :class="providerBadgeClass">
+            {{ providerResult.kind.replaceAll('_', ' ') }}
+          </span>
+        </div>
       </div>
 
-      <div v-if="providerResult"
-           class="glass-card p-4 mb-4 flex items-center justify-between gap-3">
-        <div>
-          <p class="text-xs text-ink-muted uppercase tracking-widest mb-1">Detected provider</p>
-          <p class="text-sm font-medium text-ink-primary">{{ providerLabel }}</p>
-          <p class="text-xs text-ink-muted mt-1">
-            Confidence {{ Math.round(providerResult.score * 100) }}%
-          </p>
-        </div>
-        <span class="text-xs font-medium px-3 py-1 rounded-full"
-              :class="providerBadgeClass">
-          {{ providerResult.kind.replaceAll('_', ' ') }}
-        </span>
-      </div>
-
+      <!-- Warning Callouts -->
       <div v-if="showDocumentWarning"
-           class="bg-amber-500/10 border border-amber-500/25 rounded-xl
-                  px-4 py-3 mb-4 flex items-start gap-3">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-             stroke="#f59e0b" stroke-width="2" class="mt-0.5 flex-shrink-0">
+           class="bg-amber-500/10 border border-amber-500/20 rounded-2xl
+                  px-4 py-3.5 mb-4 flex items-start gap-3">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+             stroke="#f59e0b" stroke-width="2.5" class="mt-0.5 flex-shrink-0">
           <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
           <line x1="12" y1="9" x2="12" y2="13"/>
           <line x1="12" y1="17" x2="12.01" y2="17"/>
         </svg>
         <div>
-          <p class="text-amber-400 text-sm font-medium mb-1">Check this upload</p>
-          <p class="text-amber-400/70 text-xs">
+          <p class="text-amber-500 dark:text-amber-400 text-sm font-bold mb-0.5">Check this upload</p>
+          <p class="text-amber-600/80 dark:text-amber-400/70 text-xs leading-relaxed">
             {{ documentWarningText }}
           </p>
         </div>
       </div>
 
       <div v-if="nlpResult?.isSuspicious"
-           class="bg-amber-500/10 border border-amber-500/25 rounded-xl
-                  px-4 py-3 mb-4 flex items-start gap-3">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-             stroke="#f59e0b" stroke-width="2" class="mt-0.5 flex-shrink-0">
+           class="bg-amber-500/10 border border-amber-500/20 rounded-2xl
+                  px-4 py-3.5 mb-4 flex items-start gap-3">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+             stroke="#f59e0b" stroke-width="2.5" class="mt-0.5 flex-shrink-0">
           <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
           <line x1="12" y1="9" x2="12" y2="13"/>
           <line x1="12" y1="17" x2="12.01" y2="17"/>
         </svg>
         <div>
-          <p class="text-amber-400 text-sm font-medium mb-1">Needs review</p>
+          <p class="text-amber-500 dark:text-amber-400 text-sm font-bold mb-0.5">Needs review</p>
           <ul class="space-y-0.5">
             <li v-for="r in nlpResult.reasons" :key="r"
-                class="text-amber-400/70 text-xs">&#8226; {{ r }}</li>
+                 class="text-amber-600/80 dark:text-amber-400/70 text-xs">&#8226; {{ r }}</li>
           </ul>
         </div>
       </div>
 
       <div v-if="lowConfidence"
-           class="bg-amber-500/10 border border-amber-500/25 rounded-xl
-                  px-4 py-3 mb-4 flex items-start gap-3">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-            stroke="#f59e0b" stroke-width="2" class="mt-0.5 flex-shrink-0">
+           class="bg-amber-500/10 border border-amber-500/20 rounded-2xl
+                  px-4 py-3.5 mb-4 flex items-start gap-3">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+            stroke="#f59e0b" stroke-width="2.5" class="mt-0.5 flex-shrink-0">
           <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
           <line x1="12" y1="9" x2="12" y2="13"/>
           <line x1="12" y1="17" x2="12.01" y2="17"/>
         </svg>
         <div>
-          <p class="text-amber-400 text-sm font-medium mb-0.5">Low OCR confidence</p>
-          <p class="text-amber-400/70 text-xs">
+          <p class="text-amber-500 dark:text-amber-400 text-sm font-bold mb-0.5">Low OCR confidence</p>
+          <p class="text-amber-600/80 dark:text-amber-400/70 text-xs leading-relaxed">
             Image quality may be poor. Please verify extracted fields manually.
           </p>
         </div>
       </div>
 
-      <div class="glass-card p-5 mb-4 space-y-4">
-        <p class="text-xs font-medium text-ink-muted uppercase tracking-widest">
+      <!-- Extracted details form -->
+      <div class="glass-card-premium p-5 mb-4 space-y-4">
+        <p class="text-xs font-bold text-ink-muted uppercase tracking-widest">
           Extracted details
         </p>
-        <div class="space-y-3">
+        <div class="space-y-4">
           <div>
-            <label class="text-xs text-ink-muted mb-1 block">Amount (₹)</label>
+            <label class="text-[10px] font-bold text-ink-secondary mb-1.5 block uppercase tracking-wider">Amount (₹)</label>
             <input v-model.number="editableFields.amount"
-                   type="number" class="input-field" />
+                   type="number" class="input-field font-mono font-bold" />
           </div>
           <div>
-            <label class="text-xs text-ink-muted mb-1 block">UPI ID</label>
-            <input v-model="editableFields.upiId" class="input-field" />
+            <label class="text-[10px] font-bold text-ink-secondary mb-1.5 block uppercase tracking-wider">UPI ID</label>
+            <input v-model="editableFields.upiId" class="input-field font-mono" />
           </div>
           <div>
-            <label class="text-xs text-ink-muted mb-1 block">Transaction ID</label>
-            <input v-model="editableFields.transactionId" class="input-field" />
+            <label class="text-[10px] font-bold text-ink-secondary mb-1.5 block uppercase tracking-wider">Transaction ID</label>
+            <input v-model="editableFields.transactionId" class="input-field font-mono" />
           </div>
           <div>
-            <label class="text-xs text-ink-muted mb-1 block">Merchant</label>
+            <label class="text-[10px] font-bold text-ink-secondary mb-1.5 block uppercase tracking-wider">Merchant</label>
             <input v-model="editableFields.merchantName" class="input-field" />
           </div>
           <div>
-            <label class="text-xs text-ink-muted mb-1 block">Date</label>
-            <input v-model="editableFields.transactionDate" class="input-field" />
+            <label class="text-[10px] font-bold text-ink-secondary mb-1.5 block uppercase tracking-wider">Date</label>
+            <input v-model="editableFields.transactionDate" class="input-field font-mono" />
           </div>
           <div>
-            <label class="text-xs text-ink-muted mb-1 block">Category</label>
-            <select v-model="editableFields.category" class="input-field w-full bg-surface-input border border-slate-700/60 rounded-xl px-4 py-2.5 text-sm font-medium outline-none text-ink-primary focus:border-brand-500/70 focus:ring-2 focus:ring-brand-500/20">
+            <label class="text-[10px] font-bold text-ink-secondary mb-1.5 block uppercase tracking-wider">Category</label>
+            <select v-model="editableFields.category" class="input-field w-full">
               <option v-for="cat in CATEGORIES" :key="cat" :value="cat">{{ cat }}</option>
             </select>
           </div>
-          <div class="flex items-center justify-between pt-1">
-            <span class="text-xs text-ink-muted">Direction</span>
-            <span class="text-xs font-medium px-3 py-1 rounded-full"
+          <div class="flex items-center justify-between pt-2 border-t border-[color:var(--border-color)]">
+            <span class="text-xs font-semibold text-ink-secondary">Transaction Direction</span>
+            <span class="text-xs font-bold px-3 py-1 rounded-full"
                   :class="nlpResult?.label === 'sent'
                     ? 'bg-red-500/15 text-red-400'
-                    : 'bg-brand-500/15 text-brand-400'">
+                    : 'bg-emerald-500/15 text-emerald-400'">
               {{ nlpResult?.label ?? 'unknown' }}
             </span>
           </div>
@@ -296,17 +324,17 @@
       </div>
 
       <div v-if="isDuplicateReceipt"
-           class="bg-red-500/10 border border-red-500/25 rounded-xl
-                  px-4 py-3 mb-4 flex items-start gap-3">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-             stroke="#f87171" stroke-width="2" class="mt-0.5 flex-shrink-0">
+           class="bg-red-500/10 border border-red-500/20 rounded-2xl
+                  px-4 py-3.5 mb-4 flex items-start gap-3">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+             stroke="#f87171" stroke-width="2.5" class="mt-0.5 flex-shrink-0">
           <circle cx="12" cy="12" r="10"/>
           <line x1="12" y1="8" x2="12" y2="12"/>
           <line x1="12" y1="16" x2="12.01" y2="16"/>
         </svg>
         <div>
-          <p class="text-red-400 text-sm font-medium mb-1">Already Scanned</p>
-          <p class="text-red-400/70 text-xs">
+          <p class="text-red-400 text-sm font-bold mb-0.5">Already Scanned</p>
+          <p class="text-red-400/70 text-xs leading-relaxed">
             This receipt matches one already in your ledger.
           </p>
         </div>
@@ -314,18 +342,18 @@
 
       <!-- ── Verify Ownership card ─────────────────────────────────── -->
       <div v-if="ownershipStatus !== 'matched'"
-           class="bg-rose-500/10 border border-rose-500/25 rounded-xl
-                  px-4 py-4 mb-4 flex flex-col gap-3">
+           class="bg-rose-500/5 border border-rose-500/20 rounded-2xl
+                  px-5 py-5 mb-5 flex flex-col gap-4 shadow-sm">
         <div class="flex items-start gap-3">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-               stroke="#f43f5e" stroke-width="2" class="mt-0.5 flex-shrink-0">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+               stroke="#f43f5e" stroke-width="2.5" class="mt-0.5 flex-shrink-0">
             <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
             <line x1="12" y1="9" x2="12" y2="13"/>
             <line x1="12" y1="17" x2="12.01" y2="17"/>
           </svg>
           <div>
-            <p class="text-rose-400 text-sm font-medium mb-1">Verify Ownership</p>
-            <p class="text-rose-400/80 text-xs">
+            <p class="text-rose-500 dark:text-rose-400 text-sm font-bold mb-1">Verify Ownership</p>
+            <p class="text-rose-600/80 dark:text-rose-400/75 text-xs leading-relaxed">
               We could not verify that this receipt belongs to you.
               Upload your bank statement as a PDF to verify automatically.
             </p>
@@ -333,35 +361,34 @@
         </div>
 
         <!-- Manual confirm checkbox (fallback) -->
-        <label class="flex items-center gap-2 cursor-pointer select-none">
+        <label class="flex items-center gap-3 cursor-pointer select-none">
           <input type="checkbox" v-model="hasConfirmedOwnership"
                  :disabled="statementVerified"
-                 class="w-4 h-4 rounded border-slate-600 bg-surface-card text-brand-500
-                        focus:ring-brand-500/30" />
-          <span class="text-sm"
+                 class="w-4 h-4 rounded border-slate-300 dark:border-slate-800 text-rose-500 focus:ring-rose-500/20" />
+          <span class="text-xs font-semibold"
                 :class="statementVerified ? 'text-ink-muted line-through' : 'text-ink-primary'">
             I confirm this is my personal receipt
           </span>
         </label>
 
         <!-- Bank statement upload + verify -->
-        <div class="mt-1 pt-3 border-t border-rose-500/20 space-y-3">
-          <p class="text-xs text-rose-400 font-medium">Verify via Bank Statement (PDF)</p>
+        <div class="mt-2 pt-4 border-t border-rose-500/10 space-y-3.5">
+          <p class="text-xs font-bold text-rose-500 uppercase tracking-wider">Verify via Bank Statement (PDF)</p>
 
           <!-- Upload row -->
           <div class="flex items-center gap-3">
             <label class="flex-1 cursor-pointer">
-              <div class="flex items-center gap-2 px-3 py-2 rounded-xl
-                          bg-surface-card border border-slate-700/60
-                          hover:border-rose-400/40 transition-colors">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+              <div class="flex items-center gap-2.5 px-4.5 py-3 rounded-xl
+                          bg-surface-card border border-[color:var(--border-color)]
+                          hover:border-rose-400/40 hover:bg-rose-500/5 transition-all">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
                      stroke="currentColor" stroke-width="2" class="text-rose-400 flex-shrink-0">
                   <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
                   <polyline points="14 2 14 8 20 8"/>
                   <line x1="12" y1="18" x2="12" y2="12"/>
                   <line x1="9" y1="15" x2="15" y2="15"/>
                 </svg>
-                <span class="text-xs text-ink-muted flex-1 truncate">
+                <span class="text-xs text-ink-secondary font-semibold flex-1 truncate">
                   {{ statementFile ? statementFile.name : 'Choose bank statement PDF…' }}
                 </span>
               </div>
@@ -375,18 +402,18 @@
               v-if="statementFile && !statementVerified"
               :disabled="verifier.isVerifying.value"
               @click="verifyBankStatement"
-              class="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl
-                     bg-rose-500/20 border border-rose-500/40 text-rose-300
-                     text-xs font-semibold hover:bg-rose-500/30 transition-colors
+              class="flex-shrink-0 flex items-center gap-1.5 px-4 py-3 rounded-xl
+                     bg-rose-500/10 border border-rose-500/25 text-rose-400
+                     text-xs font-bold hover:bg-rose-500/20 active:scale-[0.98] transition-all
                      disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg v-if="verifier.isVerifying.value"
-                   class="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
+                   class="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
                 <circle cx="12" cy="12" r="10" stroke="currentColor"
-                        stroke-width="2" stroke-dasharray="32" stroke-dashoffset="12"/>
+                        stroke-width="2.5" stroke-dasharray="32" stroke-dashoffset="12"/>
               </svg>
-              <svg v-else width="13" height="13" viewBox="0 0 24 24" fill="none"
-                   stroke="currentColor" stroke-width="2">
+              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2.5">
                 <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/>
                 <polyline points="22 4 12 14.01 9 11.01"/>
               </svg>
@@ -396,15 +423,15 @@
 
           <!-- ✅ Verified badge -->
           <div v-if="statementVerified"
-               class="flex items-start gap-2 px-3 py-2.5 rounded-xl
-                      bg-emerald-500/10 border border-emerald-500/30">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+               class="flex items-start gap-2.5 px-4 py-3 rounded-xl
+                      bg-emerald-500/10 border border-emerald-500/20 shadow-inner">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
                  stroke="#10b981" stroke-width="2.5" class="mt-0.5 flex-shrink-0">
               <polyline points="20 6 9 17 4 12"/>
             </svg>
             <div>
-              <p class="text-emerald-400 text-xs font-semibold">Transaction verified in bank statement</p>
-              <p class="text-emerald-400/70 text-xs mt-0.5">
+              <p class="text-emerald-500 dark:text-emerald-400 text-xs font-bold">Transaction verified in statement</p>
+              <p class="text-emerald-600/75 dark:text-emerald-400/70 text-[10px] font-semibold mt-0.5">
                 Matched on: {{ verificationResult?.found ? verificationResult.matchedOn.join(', ') : '' }}
               </p>
             </div>
@@ -416,15 +443,15 @@
       <Transition name="modal-fade">
         <div v-if="showNotFoundModal"
              class="fixed inset-0 z-50 flex items-center justify-center p-4"
-             style="background: rgba(0,0,0,0.7); backdrop-filter: blur(6px);"
+             style="background: rgba(0,0,0,0.75); backdrop-filter: blur(8px);"
              @click.self="showNotFoundModal = false">
-          <div class="bg-surface-card border border-red-500/30 rounded-2xl p-6 w-full max-w-sm
+          <div class="glass-card-premium border border-red-500/20 rounded-2xl p-6 w-full max-w-sm
                       shadow-2xl space-y-4">
             <!-- Icon -->
             <div class="flex justify-center">
-              <div class="w-14 h-14 rounded-full bg-red-500/15 border border-red-500/30
-                          flex items-center justify-center">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
+              <div class="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/20
+                          flex items-center justify-center shadow-glow-sm">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none"
                      stroke="#f87171" stroke-width="2">
                   <circle cx="12" cy="12" r="10"/>
                   <line x1="15" y1="9" x2="9" y2="15"/>
@@ -434,28 +461,28 @@
             </div>
 
             <div class="text-center">
-              <h3 class="text-red-400 font-semibold text-base mb-1">
+              <h3 class="text-red-400 font-bold text-base mb-1">
                 Transaction Not Found
               </h3>
-              <p class="text-ink-secondary text-sm">
+              <p class="text-ink-secondary text-sm leading-relaxed">
                 This transaction was <strong class="text-red-300">not found</strong>
                 in your bank statement.
               </p>
               <p v-if="verificationResult && !verificationResult.found"
-                 class="text-ink-muted text-xs mt-2">
+                 class="text-ink-muted text-xs font-semibold font-mono mt-2 bg-surface-input/30 py-1 rounded">
                 {{ verificationResult.reason }}
               </p>
             </div>
 
-            <div class="text-xs text-ink-muted bg-surface-input rounded-xl px-3 py-2.5">
+            <div class="text-[10px] font-semibold text-ink-muted bg-surface-input/50 rounded-xl px-4.5 py-3 leading-relaxed">
               You can still confirm manually using the checkbox above, or try uploading
               a different / complete bank statement.
             </div>
 
             <button
               @click="showNotFoundModal = false"
-              class="w-full py-2.5 rounded-xl bg-red-500/20 border border-red-500/40
-                     text-red-300 text-sm font-semibold
+              class="w-full py-3 rounded-xl bg-red-500/20 border border-red-500/30
+                     text-red-300 text-sm font-bold active:scale-[0.98]
                      hover:bg-red-500/30 transition-colors"
             >
               Got it

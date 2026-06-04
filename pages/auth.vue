@@ -1,19 +1,20 @@
 <template>
   <div class="min-h-screen bg-surface-base bg-grid-pattern
-              flex items-center justify-center px-5 py-10 overflow-hidden relative">
+               flex items-center justify-center px-5 py-10 overflow-hidden relative">
 
     <button
       @click="toggleTheme"
-      class="absolute top-5 right-5 w-10 h-10 rounded-xl bg-surface-card border border-slate-300/30 dark:border-slate-700/50 flex items-center justify-center text-base hover:bg-surface-input active:scale-95 transition-all shadow-sm z-50"
+      class="absolute top-5 right-5 w-10 h-10 rounded-xl bg-surface-card border border-[color:var(--border-color)] flex items-center justify-center text-base hover:bg-surface-input active:scale-95 transition-all shadow-sm z-50 text-ink-secondary hover:text-ink-primary"
       title="Toggle Appearance"
     >
       <span>{{ isDark ? '☀️' : '🌙' }}</span>
     </button>
 
+    <!-- Floating backdrop gradient orbs -->
     <div class="orb-1 absolute top-[-120px] right-[-80px] w-[380px] h-[380px]
                 rounded-full bg-brand-500/8 blur-3xl pointer-events-none" />
     <div class="orb-2 absolute bottom-[-80px] left-[-60px] w-[280px] h-[280px]
-                rounded-full bg-brand-600/6 blur-3xl pointer-events-none" />
+                rounded-full bg-indigo-500/6 blur-3xl pointer-events-none" />
 
     <div class="w-full max-w-[360px] relative z-10">
 
@@ -27,28 +28,28 @@
                   stroke-width="1.5" stroke-linejoin="round"/>
           </svg>
         </div>
-        <h1 class="text-2xl font-semibold text-ink-primary tracking-tight">
+        <h1 class="text-2xl font-extrabold text-ink-primary tracking-tight uppercase">
           SnapPay
         </h1>
-        <p class="text-ink-secondary text-sm mt-1.5">
+        <p class="text-ink-secondary text-sm font-semibold mt-1">
           Verify UPI receipts in seconds
         </p>
       </div>
 
-      <div class="fade-up-2 glass-card p-6">
+      <div class="fade-up-2 glass-card-premium p-7">
 
         <!-- Tabs -->
-        <div class="flex gap-2 mb-6 bg-slate-800/30 p-1 rounded-xl">
+        <div class="flex gap-2 mb-6 bg-surface-input p-1 rounded-xl border border-[color:var(--border-color)]">
           <button
-            class="flex-1 py-1.5 text-xs font-medium rounded-lg transition-all"
-            :class="isSignUp ? 'text-ink-secondary hover:text-ink-primary' : 'bg-brand-500/20 text-brand-400 shadow-sm'"
+            class="flex-1 py-2 text-xs font-bold rounded-lg transition-all"
+            :class="isSignUp ? 'text-ink-secondary hover:text-ink-primary' : 'bg-surface-card text-brand-500 shadow-sm border border-slate-200/40 dark:border-white/5'"
             @click="isSignUp = false"
           >
             Sign In
           </button>
           <button
-            class="flex-1 py-1.5 text-xs font-medium rounded-lg transition-all"
-            :class="!isSignUp ? 'text-ink-secondary hover:text-ink-primary' : 'bg-brand-500/20 text-brand-400 shadow-sm'"
+            class="flex-1 py-2 text-xs font-bold rounded-lg transition-all"
+            :class="!isSignUp ? 'text-ink-secondary hover:text-ink-primary' : 'bg-surface-card text-brand-500 shadow-sm border border-slate-200/40 dark:border-white/5'"
             @click="isSignUp = true"
           >
             Sign Up
@@ -57,8 +58,8 @@
 
         <div v-if="authMethod === 'email'">
           <form @submit.prevent="handleEmailAuth">
-            <div v-if="isSignUp" class="mb-3">
-              <label class="text-xs text-ink-secondary mb-1.5 block">Full Name</label>
+            <div v-if="isSignUp" class="mb-3.5">
+              <label class="text-[9px] font-bold text-ink-secondary mb-1.5 block uppercase tracking-wider">Full Name</label>
               <input
                 v-model="name"
                 type="text"
@@ -68,8 +69,8 @@
               />
             </div>
             
-            <div class="mb-3">
-              <label class="text-xs text-ink-secondary mb-1.5 block">Email</label>
+            <div class="mb-3.5">
+              <label class="text-[9px] font-bold text-ink-secondary mb-1.5 block uppercase tracking-wider">Email Address</label>
               <input
                 v-model="email"
                 type="email"
@@ -79,8 +80,8 @@
               />
             </div>
 
-            <div class="mb-5">
-              <label class="text-xs text-ink-secondary mb-1.5 block">Password</label>
+            <div class="mb-5.5">
+              <label class="text-[9px] font-bold text-ink-secondary mb-1.5 block uppercase tracking-wider">Password</label>
               <input
                 v-model="password"
                 type="password"
@@ -92,7 +93,7 @@
 
             <button
               type="submit"
-              class="btn-primary w-full mb-4"
+              class="btn-primary w-full mb-4 shadow-lg"
               :disabled="loading"
             >
               <span v-if="!loading">{{ isSignUp ? 'Create Account' : 'Sign In' }}</span>
@@ -105,19 +106,19 @@
             </button>
           </form>
 
-          <button class="btn-ghost w-full mb-4 text-xs" @click="authMethod = 'phone'">
-            Use phone number instead
+          <button class="btn-ghost w-full mb-4 text-xs font-bold" @click="authMethod = 'phone'">
+            Use Phone Number
           </button>
         </div>
 
         <div v-if="authMethod === 'phone'">
           <div v-if="!otpSent">
-            <label class="text-xs text-ink-secondary mb-1.5 block">
+            <label class="text-[9px] font-bold text-ink-secondary mb-1.5 block uppercase tracking-wider">
               Mobile number
             </label>
-            <div class="flex gap-2 mb-4">
+            <div class="flex gap-2 mb-4.5">
               <div class="input-field w-16 text-center flex-shrink-0
-                          text-ink-secondary text-sm">
+                          text-ink-secondary text-sm flex items-center justify-center font-bold">
                 +91
               </div>
               <input
@@ -125,17 +126,17 @@
                 type="tel"
                 maxlength="10"
                 placeholder="9876543210"
-                class="input-field flex-1"
+                class="input-field flex-1 font-mono"
                 @keyup.enter="sendOTP"
               />
             </div>
 
             <button
-              class="btn-primary w-full mb-4"
+              class="btn-primary w-full mb-4 shadow-lg"
               :disabled="phone.length !== 10 || loading"
               @click="sendOTP"
             >
-              <span v-if="!loading">Send OTP</span>
+              <span v-if="!loading">Send OTP Code</span>
               <span v-else class="flex items-center justify-center gap-2">
                 <svg class="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
                   <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" stroke-dasharray="32" stroke-dashoffset="12"/>
@@ -144,28 +145,28 @@
               </span>
             </button>
 
-            <button class="btn-ghost w-full mb-4 text-xs" @click="authMethod = 'email'">
-              Use email address instead
+            <button class="btn-ghost w-full mb-4 text-xs font-bold" @click="authMethod = 'email'">
+              Use Email Address
             </button>
           </div>
 
           <div v-else>
             <button class="flex items-center gap-2 text-ink-muted text-xs mb-5
-                           hover:text-ink-primary transition-colors"
+                           hover:text-ink-primary font-bold transition-colors"
                     @click="otpSent = false">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                   stroke="currentColor" stroke-width="2">
+                   stroke="currentColor" stroke-width="2.5">
                 <path d="M19 12H5M12 19l-7-7 7-7"/>
               </svg>
               Back
             </button>
 
-            <p class="text-xs font-medium text-ink-muted uppercase tracking-widest mb-1">
-              Verification
+            <p class="text-[9px] font-bold text-ink-muted uppercase tracking-wider mb-1">
+              Verification Code
             </p>
-            <p class="text-ink-secondary text-sm mb-5">
+            <p class="text-ink-secondary text-sm font-semibold mb-5.5">
               Code sent to
-              <span class="text-ink-primary font-medium">+91 {{ phone }}</span>
+              <span class="text-ink-primary font-bold font-mono">+91 {{ phone }}</span>
             </p>
 
             <input
@@ -173,13 +174,13 @@
               type="tel"
               maxlength="6"
               placeholder="000000"
-              class="input-field otp-input text-center text-2xl mb-4
-                     tracking-[0.5em] font-mono"
+              class="input-field otp-input text-center text-2xl mb-4.5
+                     tracking-[0.5em] font-mono font-bold"
               @keyup.enter="verifyOTP"
             />
 
             <button
-              class="btn-primary w-full"
+              class="btn-primary w-full shadow-lg"
               :disabled="otp.length !== 6 || loading"
               @click="verifyOTP"
             >
@@ -194,15 +195,15 @@
           </div>
         </div>
 
-        <div class="flex items-center gap-3 mb-4 mt-2">
-          <div class="flex-1 h-px bg-slate-700/60"></div>
-          <span class="text-xs text-ink-muted">or</span>
-          <div class="flex-1 h-px bg-slate-700/60"></div>
+        <div class="flex items-center gap-3.5 mb-4 mt-2">
+          <div class="flex-1 h-px bg-slate-200/50 dark:bg-slate-800/60"></div>
+          <span class="text-xs text-ink-muted font-bold">or</span>
+          <div class="flex-1 h-px bg-slate-200/50 dark:bg-slate-800/60"></div>
         </div>
 
-        <button class="btn-ghost w-full flex items-center justify-center gap-3"
+        <button class="btn-ghost w-full flex items-center justify-center gap-3.5 py-3.5 hover:scale-[1.01] transition-all font-bold text-xs"
                 @click="signInGoogle">
-          <svg width="18" height="18" viewBox="0 0 24 24">
+          <svg width="18" height="18" viewBox="0 0 24 24" class="flex-shrink-0">
             <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
             <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
             <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
@@ -219,12 +220,12 @@
             <circle cx="12" cy="12" r="10"/>
             <path d="M12 8v4M12 16h.01"/>
           </svg>
-          <p class="text-red-400 text-xs">{{ authStore.error }}</p>
+          <p class="text-red-400 text-xs font-semibold leading-relaxed">{{ authStore.error }}</p>
         </div>
       </div>
 
-      <p class="fade-up-3 text-center text-ink-muted text-xs mt-6">
-        Protected by Firebase Auth · End-to-end encrypted
+      <p class="fade-up-3 text-center text-ink-muted text-xs mt-6 font-semibold">
+        Protected by Firebase Auth · Secure Data
       </p>
     </div>
 

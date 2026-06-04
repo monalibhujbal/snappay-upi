@@ -45,21 +45,6 @@ export function useCamera() {
         const ctx = canvas.getContext('2d')!
         ctx.drawImage(videoEl.value, 0, 0)
 
-        // This quick pass makes text a little easier for OCR to read.
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-        const data = imageData.data
-        for (let i = 0; i < data.length; i += 4) {
-            const r = data[i] ?? 0
-            const g = data[i + 1] ?? 0
-            const b = data[i + 2] ?? 0
-            const gray = r * 0.299 + g * 0.587 + b * 0.114
-            const boosted = gray < 128
-                ? Math.max(0, gray - 30)
-                : Math.min(255, gray + 30)
-            data[i] = data[i + 1] = data[i + 2] = boosted
-        }
-        ctx.putImageData(imageData, 0, 0)
-
         capturedImage.value = canvas.toDataURL('image/png')
         return capturedImage.value
     }
