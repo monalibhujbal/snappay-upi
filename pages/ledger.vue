@@ -105,8 +105,8 @@
             <span class="text-[9px] font-bold px-2 py-0.5 rounded-full bg-surface-input border border-[color:var(--border-color)] text-ink-muted uppercase">
               {{ txn.direction }}
             </span>
-            <span v-if="txn.statementUrl" class="text-[9px] px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20 font-bold uppercase">
-              Statement Verified
+            <span v-if="txn.statementVerified || (txn.statementUrl && txn.ownerVerifiedMode !== 'manual')" class="text-[9px] px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20 font-bold uppercase">
+              Bank Verified
             </span>
           </div>
           <div class="flex items-center gap-3 ml-auto">
@@ -146,7 +146,7 @@ const filters = [
   { label: 'Sent',     value: 'sent'     },
   { label: 'Received', value: 'received' },
   { label: 'Flagged',  value: 'flagged'  },
-  { label: 'Statement Verified', value: 'statement' },
+  { label: 'Bank Verified', value: 'statement' },
 ]
 
 const activeFilter = ref('all')
@@ -161,7 +161,7 @@ const filteredTransactions = computed(() => {
     return txns.transactions.value.filter(t => t.status === 'flagged')
   }
   if (activeFilter.value === 'statement') {
-    return txns.transactions.value.filter(t => !!t.statementUrl)
+    return txns.transactions.value.filter(t => t.statementVerified || (t.statementUrl && t.ownerVerifiedMode !== 'manual'))
   }
   return txns.transactions.value.filter(t => t.direction === activeFilter.value)
 })

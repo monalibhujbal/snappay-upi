@@ -20,7 +20,7 @@ export interface StatementVerificationFields {
 }
 
 export type VerificationResult =
-  | { found: true;  matchedOn: string[] }
+  | { found: true; matchedOn: string[] }
   | { found: false; reason: string }
 
 export function useBankStatementVerifier() {
@@ -33,11 +33,10 @@ export function useBankStatementVerifier() {
     // Dynamically import to keep the bundle lean and avoid SSR issues.
     const pdfjsLib = await import('pdfjs-dist')
 
-    // Point the worker at the bundled worker file shipped with pdfjs-dist.
-    // Using a CDN URL avoids Vite/Nuxt worker-bundling quirks.
+
     if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
       pdfjsLib.GlobalWorkerOptions.workerSrc =
-        `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`
+        `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
     }
 
     const arrayBuffer = await file.arrayBuffer()
@@ -130,9 +129,11 @@ export function useBankStatementVerifier() {
         const upiNorm = normalise(fields.upiId)
         // Try the full UPI id and also just the handle part (after @)
         const parts = upiNorm.split('@')
+        const first = parts[0]
+        const second = parts[1]
         const upiFound =
           text.includes(upiNorm) ||
-          (parts.length === 2 && parts[1] && text.includes(parts[0])) 
+          (parts.length === 2 && second !== undefined && first !== undefined && text.includes(first))
         if (upiFound) matchedOn.push('UPI ID')
       }
 

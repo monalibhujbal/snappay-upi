@@ -41,6 +41,7 @@ export interface UpiTransaction {
 
     ownerVerifiedMode?: 'auto' | 'manual'
     statementUrl?: string
+    statementVerified?: boolean
     category?: string
 }
 
